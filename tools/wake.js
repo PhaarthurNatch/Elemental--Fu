@@ -1,4 +1,4 @@
-// Prueba de las estelas (fuego y agua moviendo rápido la esfera; aire deslizando el dedo) y qué bloquea cada una, y de las piedras pesadas que siguen al personaje con retraso.
+// Prueba de las estelas (fuego y agua moviendo rápido la esfera; el dedo solo no deja estela) y qué bloquea cada una, y de las piedras pesadas que siguen al personaje con retraso.
 // Agua bloquea aire, tierra y fuego; fuego bloquea aire, el agua pasa debilitada, la tierra pasa; aire bloquea fuego y agua, no la tierra.
 // Uso: node tools/wake.js
 const { chromium, devices } = require('playwright');
@@ -34,7 +34,7 @@ const { chromium, devices } = require('playwright');
   for (const [wk, ak, want] of rules) { const r = await test(wk, ak); res.rules[wk + '/' + ak] = r;
     const ok = want === 'block' ? r.dmg === 0 : want === 'weak' ? r.weak && r.dmg > 1 && r.dmg < 10 : r.dmg > 10;
     if (!ok) errs.push(`estela de ${wk} contra ${ak}: se esperaba ${want}, dio ${JSON.stringify(r)}`); }
-  // aire: deslizar el dedo deja una estela de viento y golpea al rival si pasa por él
+  // aire y fuego: deslizar el dedo solo ya no deja estela ni golpea
   await start('aire');
   const foeS = await p.evaluate(() => { const v = view(), f = G.foe.nodes[G.foe.ix.upper]; return { x: v.ox + f.x * v.k, y: v.oy + f.y * v.k }; });
   const hp0 = await p.evaluate(() => G.foe.hp);
@@ -42,9 +42,7 @@ const { chromium, devices } = require('playwright');
   for (let i = 1; i <= 12; i++) { await t('touchMove', [{ x: foeS.x - 120 + i * 20, y: foeS.y + 2 }]); await p.waitForTimeout(25); }
   res.airWake = await p.evaluate(() => G.wakes.filter(w => w.k === 'air').length); await t('touchEnd', []); await p.waitForTimeout(300);
   res.airDmg = hp0 - await p.evaluate(() => G.foe.hp);
-  if (!(res.airWake > 10)) errs.push('aire: deslizar no dejó estela');
-  if (!(res.airDmg > 5)) errs.push('aire: la estela no dañó al rival');
-  // fuego: deslizar el dedo en cualquier parte también deja estela y golpea
+  if (res.airWake || res.airDmg > 0.5) errs.push('aire: deslizar todavía deja estela o daña');
   await start('fuego');
   const foeF = await p.evaluate(() => { const v = view(), f = G.foe.nodes[G.foe.ix.upper]; return { x: v.ox + f.x * v.k, y: v.oy + f.y * v.k }; });
   const hpF = await p.evaluate(() => G.foe.hp);
@@ -52,7 +50,7 @@ const { chromium, devices } = require('playwright');
   for (let i = 1; i <= 12; i++) { await t('touchMove', [{ x: foeF.x - 120 + i * 20, y: foeF.y + 2 }]); await p.waitForTimeout(25); }
   res.fireFinger = await p.evaluate(() => G.wakes.filter(w => w.k === 'fire').length); await t('touchEnd', []); await p.waitForTimeout(300);
   res.fireFingerDmg = hpF - await p.evaluate(() => G.foe.hp);
-  if (!(res.fireFinger > 10 && res.fireFingerDmg > 5)) errs.push('fuego: deslizar no dejó estela o no dañó');
+  if (res.fireFinger || res.fireFingerDmg > 0.5) errs.push('fuego: deslizar el dedo todavía deja estela o daña');
   res.ver = await p.evaluate(() => { document.getElementById('btnBack').click(); return document.getElementById('ver').textContent; });
   if (!/Versión v\d/.test(res.ver)) errs.push('no aparece la versión al elegir personaje');
   // tierra: las piedras guardadas siguen al personaje con medio segundo de retraso

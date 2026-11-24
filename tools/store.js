@@ -37,6 +37,17 @@ const path = require('path');
   await t('touchStart', [{ x: 300, y: 600 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 300 + u.x * i * 60, y: 600 + u.y * i * 60 }]); await p.waitForTimeout(8); } await t('touchEnd', []);
   const flying = await p.evaluate(() => G.orbs.filter(o => o.thrown).length), dirOk = await p.evaluate(u => { const o = G.orbs.find(o => o.thrown); return !!o && (o.vx * u.x + o.vy * u.y) / Math.hypot(o.vx, o.vy) > 0.97; }, u); await p.waitForTimeout(1200);
   const dmg = hp0 - await p.evaluate(() => G.foe.hp);
+  // agua: cada disparo con una mano gasta un nivel de la burbuja; con las dos manos a la vez sale completa
+  const flick = async (pts) => { await t('touchStart', pts.map((q, i) => ({ x: q.x, y: q.y, id: i + 1 }))); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', pts.map((q, k) => ({ x: q.x, y: q.y - i * 60, id: k + 1 }))); await p.waitForTimeout(8); } await t('touchEnd', []); await p.waitForTimeout(60); };
+  await p.waitForTimeout(500); await p.evaluate(() => { G.orbs = []; giveBubble(G.me, 3); }); await p.waitForTimeout(300);
+  await flick([{ x: 300, y: 600 }]);
+  const one = await p.evaluate(() => ({ shot: G.orbs.filter(o => o.thrown).map(o => o.lvl), left: G.orbs.filter(o => o.docked).map(o => o.lvl) }));
+  await p.waitForTimeout(600); await p.evaluate(() => { G.orbs = []; giveBubble(G.me, 3); }); await p.waitForTimeout(300);
+  await flick([{ x: 120, y: 600 }, { x: 300, y: 600 }]);
+  const two = await p.evaluate(() => ({ shot: G.orbs.filter(o => o.thrown).map(o => o.lvl), left: G.orbs.filter(o => o.docked).length }));
+  console.log({ one, two });
+  if (!(one.shot.length === 1 && one.shot[0] === 1 && one.left[0] === 2)) errs.push('agua: con una mano no gastó sólo un nivel: ' + JSON.stringify(one));
+  if (!(two.shot.length === 1 && two.shot[0] === 3 && two.left === 0)) errs.push('agua: con las dos manos no salió completa: ' + JSON.stringify(two));
   // fuego: hasta 3 orbitando
   await p.evaluate(() => { document.getElementById('btnBack').click(); document.querySelector('.elbtn[data-el="fuego"]').click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; });
   await p.waitForTimeout(600);
