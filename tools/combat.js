@@ -21,7 +21,7 @@ const { chromium, devices } = require('playwright');
   const throwAt = async () => {
     const tg = await p.evaluate(() => { const v = view(), f = G.foe; return { x: v.ox + f.gx * v.k, y: v.oy + (f.gy - 40 * f.s) * v.k }; });
     await t('touchStart', [{ x: fire.x, y: fire.y }]); await p.waitForTimeout(60);
-    { const dx = tg.x - fire.x, dy = tg.y - fire.y, d = Math.hypot(dx, dy); for (let i = 1; i <= 6; i++) { await t('touchMove', [{ x: fire.x + dx / d * 7 * i, y: fire.y + dy / d * 7 * i }]); await p.waitForTimeout(40); } } // empezar despacio = esfera
+    { const dx = tg.x - fire.x, dy = tg.y - fire.y, d = Math.hypot(dx, dy); for (let i = 1; i <= 9; i++) { await t('touchMove', [{ x: fire.x + dx / d * 5 * i, y: fire.y + dy / d * 5 * i }]); await p.waitForTimeout(40); } } // empezar despacio = esfera
     const n = 8; for (let i = 1; i <= n; i++) { await t('touchMove', [{ x: fire.x + (tg.x - fire.x) * i / n * 0.75, y: fire.y + (tg.y - fire.y) * i / n * 0.75 }]); await p.waitForTimeout(16); }
     await t('touchEnd', []);
     const hp0 = await p.evaluate(() => G.foe.hp); await p.waitForTimeout(1200); return hp0 - await p.evaluate(() => G.foe.hp);

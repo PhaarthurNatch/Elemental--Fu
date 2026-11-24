@@ -119,7 +119,7 @@ const JOY_R = 44;     // palanca para caminar (sólo en el link de prueba, donde
 const TURN = 5;
 // Tomar el elemento (pedido del dueño): tocar un pozo o una llama y arrastrar saca una esfera de agua o una bola de fuego, sólo si eres de ese elemento
 const ORB = { r: 11, k: 170, z: 0.6, fall: 520, fade: 0.55 }; // tamaño, resorte que la lleva hacia tu dedo, gravedad del agua al soltarla, cuánto tarda en deshacerse
-const PROP_EL = { water: 'agua', fire: 'fuego' };
+const PROP_EL = { water: 'agua', fire: 'fuego', air: 'aire' }; // el aire se saca de cualquier parte del suelo (salvo las fuentes de fuego y agua), pedido del dueño
 // Escudo (pedido del dueño): mantener presionado tu pozo o tu llama trae una corriente que te rodea como una esfera; el daño que recibes baja según cuánto elemento tienes alrededor
 const STREAM = { hold: 0.35, rate: 38, t: 0.75, per: 0.014, decay: 0.035 }; // espera antes de que empiece, gotas/llamas por segundo, segundos que tardan en llegar, escudo que suma cada una, cuánto se gasta solo por segundo
 const SHIELD = { r: 34, block: 0.75, wear: 0.03 }; // radio, cuánto daño quita con el escudo lleno (75%), cuánto se gasta por cada punto de daño
@@ -402,7 +402,7 @@ function drawArena(ctx, V) {
 
 // ----- Elementos en las esquinas (pedido del dueño): fuego arriba a la izquierda y abajo a la derecha, pozo de agua abajo a la izquierda y arriba a la derecha -----
 const FIRE_R = 22, FIRE_H = 13, POOL_R = 40;
-function arenaProps() { const W = ARENA_W, D = ARENA_D, f = FIRE_R * 0.8, w = POOL_R * 0.8; return [{ k: 'fire', x: f, y: f, r: FIRE_R }, { k: 'water', x: w, y: D - w, r: POOL_R }, { k: 'fire', x: W - f, y: D - f, r: FIRE_R }, { k: 'water', x: W - w, y: w, r: POOL_R }]; } // metidos en las esquinas (pedido del dueño): el pozo queda cortado por el muro y el borde de la arena
+function arenaProps() { const W = ARENA_W, D = ARENA_D, f = FIRE_R + 34, w = POOL_R + 7 + 30; return [{ k: 'fire', x: f, y: f, r: FIRE_R }, { k: 'water', x: w, y: D - w, r: POOL_R }, { k: 'fire', x: W - f, y: D - f, r: FIRE_R }, { k: 'water', x: W - w, y: w, r: POOL_R }]; } // metidos en las esquinas (pedido del dueño): el pozo queda cortado por el muro y el borde de la arena
 function drawPool(ctx, p, T) { // pozo de agua: borde de piedra y agua con ondas y brillos
   const x = p.x, y = TOP + p.y * DEPTH, R = p.r, RY = R * DEPTH, rim = 7, h = 6;
   ctx.fillStyle = '#5e5850'; ctx.beginPath(); ctx.ellipse(x, y, R + rim, (R + rim) * DEPTH, 0, 0, Math.PI); ctx.lineTo(x - R - rim, y - h); ctx.ellipse(x, y - h, R + rim, (R + rim) * DEPTH, 0, Math.PI, 0, true); ctx.closePath(); ctx.fill(); // costado del borde
@@ -482,6 +482,7 @@ cv.addEventListener('pointerdown', e => {
   const p = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: performance.now(), moved: false, arm: null, prop: -1 };
   const pi = propAt(e.clientX, e.clientY);
   if (pi >= 0) { const a = pickArm(e.clientX); if (a) { const w = toWorld(e.clientX, e.clientY); p.moved = true; p.arm = a; p.prop = pi; a.ctl = { abs: true, x: w.x, y: w.y }; } } // tocar un pozo o una llama: ese brazo se estira hacia allá
+  else if (G.me.el === 'aire') { const w = toWorld(e.clientX, e.clientY); if (w.x > 0 && w.x < ARENA_W && w.y > TOP && w.y < TOP + ARENA_D * DEPTH) p.src = { k: 'air', x: w.x, y: (w.y - TOP) / DEPTH, r: 0 }; } // aire: cualquier punto del suelo es una fuente (un toque igual es saltar)
   PTRS.set(e.pointerId, p);
 });
 cv.addEventListener('pointermove', e => {
@@ -490,7 +491,7 @@ cv.addEventListener('pointermove', e => {
   const nowT = performance.now(); (p.hist = p.hist || [{ t: p.t0, x: p.x0, y: p.y0 }]).push({ t: nowT, x: p.x, y: p.y }); if (p.hist.length > 4) p.hist.shift(); // últimos movimientos del dedo (para saber qué tan rápido desliza)
   if (!p.moved && Math.hypot(p.x - p.x0, p.y - p.y0) > TAP_MOVE && G) { // empieza a mover el brazo del lado donde está el dedo
     const me = G.me, N = me.nodes, a = pickArm(p.x0);
-    if (a) { p.moved = true; p.arm = a; a.ctl = { rx: N[a.ha].x - N[a.sh].x, ry: N[a.ha].y - N[a.sh].y, dx: 0, dy: 0 }; p.x0 = p.x; p.y0 = p.y; me.charge = 0; }
+    if (a) { p.moved = true; p.arm = a; a.ctl = p.src ? (w => ({ abs: true, x: w.x, y: w.y }))(toWorld(p.x, p.y)) : { rx: N[a.ha].x - N[a.sh].x, ry: N[a.ha].y - N[a.sh].y, dx: 0, dy: 0 }; p.x0 = p.x; p.y0 = p.y; me.charge = 0; if (p.src) p.dragT = nowT; } // aire: el brazo apunta a tu dedo y, si sigues arrastrando, sale la esfera de aire
   }
   const pdist = Math.hypot(p.x - p.x0, p.y - p.y0);
   if (p.prop < 0 && !p.fired && !p.swipe && G && G.phase === 'fight' && pdist > SPLASH.decide && p.hist.length >= 3) { // deslizar rápido en cualquier dirección: llamarada / ráfaga / chorro si mantienes el dedo; si lo sueltas pronto, dispara la esfera guardada
@@ -628,18 +629,20 @@ function touchTurn(m, base) { // si un brazo que controlas tendría que ir muy h
   if (!ds.length) return 0; if (ds.length === 1) return ds[0];
   return Math.sign(ds[0]) === Math.sign(ds[1]) ? (Math.abs(ds[0]) > Math.abs(ds[1]) ? ds[0] : ds[1]) : (ds[0] + ds[1]) / 2;
 }
-function propTop(pr) { return { x: pr.x, y: TOP + pr.y * DEPTH - (pr.k === 'water' ? 6 : FIRE_H + pr.r * 0.8) }; }
+function propTop(pr) { return { x: pr.x, y: TOP + pr.y * DEPTH - (pr.k === 'water' ? 6 : pr.k === 'air' ? 4 : FIRE_H + pr.r * 0.8) }; }
+const srcOf = p => p.src || (p.prop >= 0 ? arenaProps()[p.prop] : null); // de dónde sacas el elemento: el pozo o la llama que tocaste, o (aire) el punto del suelo
 function flowStep(dt) { // mantener presionado tu pozo o tu llama: sale una corriente que va hacia ti y forma el escudo
   const now = performance.now();
   for (const p of PTRS.values()) { // sigue arrastrando desde tu pozo o tu llama más de SPLASH.quick: sale la esfera
-    if (p.prop < 0 || !p.dragT || p.orb || p.docked || p.splashed || p.stream || G.phase !== 'fight' || (now - p.dragT) / 1000 < SPLASH.quick) continue;
-    const pr = arenaProps()[p.prop]; if (PROP_EL[pr.k] !== G.me.el) continue;
-    p.orb = { k: pr.k, x: pr.x, y: TOP + pr.y * DEPTH - (pr.k === 'water' ? 6 : FIRE_H + pr.r), vx: 0, vy: -60, held: true, t: 0, life: 1 }; G.orbs.push(p.orb); for (let i = 0; i < 8; i++) orbFx(p.orb, 1);
+    const pr = srcOf(p); if (!pr || !p.dragT || p.orb || p.docked || p.splashed || p.stream || p.swipe || p.fired || p.beam || G.phase !== 'fight' || (now - p.dragT) / 1000 < SPLASH.quick) continue;
+    if (PROP_EL[pr.k] !== G.me.el) continue;
+    p.orb = { k: pr.k, x: pr.x, y: TOP + pr.y * DEPTH - (pr.k === 'water' ? 6 : pr.k === 'air' ? 18 : FIRE_H + pr.r), vx: 0, vy: -60, held: true, t: 0, life: 1 }; G.orbs.push(p.orb); for (let i = 0; i < 8; i++) orbFx(p.orb, 1);
   }
   for (const p of PTRS.values()) {
-    if (p.prop < 0 || !p.arm || p.orb || G.phase !== 'fight') continue;
-    const pr = arenaProps()[p.prop];
-    if (!p.stream && PROP_EL[pr.k] === G.me.el && (now - p.t0) / 1000 > STREAM.hold && Math.hypot(p.x - p.x0, p.y - p.y0) <= TAP_MOVE) p.stream = { k: pr.k, acc: 0, w: Math.random() * 2 - 1, ph: Math.random() * TAU };
+    const pr = srcOf(p); if (!pr || (!p.arm && !p.src) || p.orb || p.swipe || p.fired || G.phase !== 'fight') continue;
+    if (!p.stream && !p.dragT && PROP_EL[pr.k] === G.me.el && (now - p.t0) / 1000 > STREAM.hold && Math.hypot(p.x - p.x0, p.y - p.y0) <= TAP_MOVE) {
+      if (!p.arm) { const a = pickArm(p.x); if (!a) continue; const st = propTop(pr); p.arm = a; p.moved = true; a.ctl = { abs: true, x: st.x, y: st.y }; } // aire: el brazo apunta al punto que mantienes
+      p.stream = { k: pr.k, acc: 0, w: Math.random() * 2 - 1, ph: Math.random() * TAU }; }
     if (!p.stream) continue;
     p.stream.acc += dt * STREAM.rate;
     while (p.stream.acc > 1) { p.stream.acc--; const st = propTop(pr); p.stream.w += (Math.random() - 0.5) * 0.08; p.stream.w = clamp(p.stream.w, -1, 1); G.flow.push({ k: pr.k, sx: st.x + (Math.random() - 0.5) * 4, sy: st.y, m: G.me, t: 0, w: p.stream.w + (Math.random() - 0.5) * 0.12, ph: p.stream.ph + now / 1000 * 2.5 + Math.random() * 0.5 }); } // todas siguen casi el mismo camino: un chorro continuo
@@ -656,9 +659,9 @@ function flowPos(q, t) { // camino curvo desde el pozo o la llama hasta la esfer
 function drawFlow(ctx) {
   ctx.lineCap = 'round';
   for (const q of G.flow) {
-    const a = flowPos(q, q.t), b = flowPos(q, Math.max(0, q.t - 0.1)), fire = q.k === 'fire';
-    ctx.strokeStyle = fire ? 'rgba(255,120,30,.75)' : 'rgba(70,160,230,.8)'; ctx.lineWidth = (fire ? 7 : 8) * (1 - 0.35 * q.t); ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(a.x, a.y); ctx.stroke();
-    ctx.strokeStyle = fire ? 'rgba(255,230,120,.9)' : 'rgba(220,245,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(a.x, a.y); ctx.stroke();
+    const a = flowPos(q, q.t), b = flowPos(q, Math.max(0, q.t - 0.1)), fire = q.k === 'fire', air = q.k === 'air';
+    ctx.strokeStyle = fire ? 'rgba(255,120,30,.75)' : air ? 'rgba(170,210,232,.55)' : 'rgba(70,160,230,.8)'; ctx.lineWidth = (fire ? 7 : 8) * (1 - 0.35 * q.t); ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(a.x, a.y); ctx.stroke();
+    ctx.strokeStyle = fire ? 'rgba(255,230,120,.9)' : air ? 'rgba(255,255,255,.95)' : 'rgba(220,245,255,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(a.x, a.y); ctx.stroke();
   }
 }
 function drawShield(ctx, m, T) { // esfera de agua o fuego alrededor del personaje: más gruesa mientras más elemento tiene
@@ -669,6 +672,10 @@ function drawShield(ctx, m, T) { // esfera de agua o fuego alrededor del persona
     ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(x, y, R * 0.4, x, y, R * 1.3); g.addColorStop(0, 'rgba(255,120,30,0)'); g.addColorStop(0.75, `rgba(255,130,40,${0.12 + 0.2 * a})`); g.addColorStop(1, 'rgba(255,90,20,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, R * 1.3, 0, TAU); ctx.fill(); ctx.globalCompositeOperation = 'source-over';
     const n = 12; for (let i = 0; i < n; i++) { const an = T * 2.2 + i * TAU / n, px = x + Math.cos(an) * R, py = y + Math.sin(an) * Ry, h = (5 + 9 * a) * m.s * (1 + 0.25 * Math.sin(T * 11 + i * 1.7)), w = (2.5 + 2.5 * a) * m.s;
       for (const [col, k] of [['#e2401c', 1], ['#ff9a2a', 0.7], ['#ffe07a', 0.4]]) { ctx.fillStyle = col; ctx.globalAlpha = 0.55 + 0.45 * a; ctx.beginPath(); ctx.moveTo(px - w * k, py); ctx.quadraticCurveTo(px - w * k, py - h * k * 0.6, px + Math.sin(T * 6 + i) * 2, py - h * k); ctx.quadraticCurveTo(px + w * k, py - h * k * 0.6, px + w * k, py); ctx.closePath(); ctx.fill(); } }
+  } else if (m.el === 'aire') { // aire: una esfera de viento que gira rápido
+    const g = ctx.createRadialGradient(x, y, R * 0.3, x, y, R); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, `rgba(215,235,248,${0.15 + 0.25 * a})`); ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, R, Ry, 0, 0, TAU); ctx.fill();
+    ctx.lineCap = 'round'; for (let k = 0; k < 5; k++) { const st = T * (4 + k * 0.7) + k * 1.3, rr = R * (0.7 + 0.07 * k); ctx.strokeStyle = `rgba(255,255,255,${0.45 + 0.45 * a})`; ctx.lineWidth = (1 + 1.8 * a) * m.s; ctx.beginPath(); ctx.ellipse(x, y, rr, Ry * (0.35 + 0.13 * k), (k - 2) * 0.35, st, st + 1.1 + a); ctx.stroke(); } // corrientes de viento
+    ctx.strokeStyle = `rgba(170,210,232,${0.3 + 0.4 * a})`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.ellipse(x, y, R, Ry, 0, 0, TAU); ctx.stroke();
   } else {
     const g = ctx.createRadialGradient(x - R * 0.3, y - R * 0.3, R * 0.2, x, y, R); g.addColorStop(0, `rgba(190,235,255,${0.06 + 0.1 * a})`); g.addColorStop(1, `rgba(50,140,225,${0.22 + 0.3 * a})`);
     ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, R, Ry, 0, 0, TAU); ctx.fill();
@@ -679,7 +686,7 @@ function drawShield(ctx, m, T) { // esfera de agua o fuego alrededor del persona
   ctx.restore();
 }
 function hitFighter(m, o) { // la esfera lanzada golpea
-  dealDamage(m, THROW.dmg * (1 + 0.5 * ((o.lvl || 1) - 1)), o.vx, o.vy, o.k === 'water' ? 1.1 : 0.6); orbFx(o, 18); // más grande, más daño
+  dealDamage(m, THROW.dmg * (1 + 0.5 * ((o.lvl || 1) - 1)), o.vx, o.vy, o.k === 'air' ? 1.6 : o.k === 'water' ? 1.1 : 0.6); orbFx(o, 18); // más grande, más daño
 }
 function dealDamage(m, raw, vx, vy, kbK = 1) { // daño con o sin escudo: baja según cuánto elemento tiene alrededor, y el escudo se gasta
   const o = { vx, vy }, sp = Math.hypot(vx, vy), red = SHIELD.block * m.shield, dmg = raw * (1 - red);
@@ -915,6 +922,7 @@ function newRound() { // otra ronda después del K.O.
 }
 function orbFx(o, n) { // gotitas o chispas que suelta la esfera
   for (let i = 0; i < n; i++) { const a = Math.random() * TAU, sp = 20 + Math.random() * 70;
+    if (o.k === 'air') { fxPush({ k: 'wisp', x: o.x + Math.cos(a) * ORB.r * 0.7, y: o.y + Math.sin(a) * ORB.r * 0.7, vx: Math.cos(a) * sp - o.vx * 0.1, vy: Math.sin(a) * sp - o.vy * 0.1, g: 0, life: 0.35, r: 2.5 + Math.random() * 3, grow: 10, drag: 2, ph: Math.random() * TAU }); continue; } // aire: remolinitos
     G.fx.push(o.k === 'water' ? { k: 'drop', x: o.x + Math.cos(a) * ORB.r * 0.6, y: o.y + Math.sin(a) * ORB.r * 0.6, vx: Math.cos(a) * sp - o.vx * 0.1, vy: Math.sin(a) * sp - 40 - o.vy * 0.1, g: 420, life: 0.5 + Math.random() * 0.3, r: 1.6 + Math.random() * 1.8 }
       : { k: 'ember', x: o.x + Math.cos(a) * ORB.r * 0.5, y: o.y + Math.sin(a) * ORB.r * 0.5, vx: Math.cos(a) * sp * 0.5 - o.vx * 0.15, vy: -40 - Math.random() * 60 - o.vy * 0.15, g: -30, life: 0.4 + Math.random() * 0.3, r: 1.2 + Math.random() * 1.6 }); }
 }
@@ -937,8 +945,8 @@ function orbStep(dt) {
       const m = o.owner, c = m.nodes[m.ix.upper], pr = m.proj(o.side * (DOCK.side + 6 * (o.lvl - 1)), 4); o.back = pr.z < 0;
       const tx = c.x + pr.x * m.s, ty = c.y + 2 * m.s + pr.z * DEPTH * m.s + Math.sin(o.t * 2.4) * 1.5, k = 90, cc = 2 * 0.7 * Math.sqrt(k);
       o.vx += ((tx - o.x) * k - o.vx * cc) * dt; o.vy += ((ty - o.y) * k - o.vy * cc) * dt; o.life = 1;
-    } else if (o.docked) { // fuego guardado: orbita alrededor de tu personaje, a la altura del pecho
-      const m = o.owner, c = m.nodes[m.ix.upper], idx = G.orbs.filter(q => q.docked && q.owner === m && q.k === 'fire').indexOf(o), an = performance.now() / 1000 * 1.4 + idx * TAU / DOCK.max; // repartidas en la órbita
+    } else if (o.docked) { // fuego o aire guardado: orbita alrededor de tu personaje, a la altura del pecho
+      const m = o.owner, c = m.nodes[m.ix.upper], idx = G.orbs.filter(q => q.docked && q.owner === m && q.k === o.k).indexOf(o), an = performance.now() / 1000 * 1.4 + idx * TAU / DOCK.max; // repartidas en la órbita
       o.back = Math.sin(an) < 0; // en la mitad de atrás de la órbita pasa por detrás del personaje
       const tx = c.x + Math.cos(an) * DOCK.orbX * m.s, ty = c.y - 2 * m.s + Math.sin(an) * DOCK.orbY * m.s + Math.sin(o.t * 3 + idx) * 2, k = 90, cc = 2 * 0.7 * Math.sqrt(k);
       o.vx += ((tx - o.x) * k - o.vx * cc) * dt; o.vy += ((ty - o.y) * k - o.vy * cc) * dt; o.life = 1;
@@ -950,7 +958,7 @@ function orbStep(dt) {
         if (inBody || inShield) { hitFighter(m, o); o.life = 0; } }
     } else { // suelta: el agua cae y salpica; el fuego sube un poco y se apaga
       o.held = false; o.life -= dt / ORB.fade;
-      if (o.k === 'water') o.vy += ORB.fall * dt; else { o.vy -= 60 * dt; o.vx *= Math.exp(-dt * 3); }
+      if (o.k === 'water') o.vy += ORB.fall * dt; else if (o.k === 'air') { const e = Math.exp(-dt * 3); o.vx *= e; o.vy *= e; } else { o.vy -= 60 * dt; o.vx *= Math.exp(-dt * 3); } // el aire se deshace donde lo sueltas
       if (o.life <= 0) orbFx(o, o.k === 'water' ? 16 : 12);
     }
     if (o.thrown && o.life <= 0 && !o.fxDone) { o.fxDone = true; orbFx(o, 10); }
@@ -971,6 +979,12 @@ function drawOrb(ctx, o, T) {
     const g = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r * st); g.addColorStop(0, '#e4f7ff'); g.addColorStop(0.45, '#6cc2f2'); g.addColorStop(1, '#1f6fc0');
     ctx.fillStyle = g; ctx.strokeStyle = '#164d86'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(0, 0, r * st * (1 + wob), r / Math.sqrt(st) * (1 - wob), 0, 0, TAU); ctx.fill(); ctx.stroke();
     ctx.rotate(-ang); ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.ellipse(-r * 0.35, -r * 0.4, r * 0.28, r * 0.16, -0.6, 0, TAU); ctx.fill();
+  } else if (o.k === 'air') { // esfera de aire: remolino translúcido con corrientes que giran
+    ctx.translate(o.x, o.y);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 1.35); g.addColorStop(0, 'rgba(255,255,255,.6)'); g.addColorStop(0.6, 'rgba(215,236,248,.35)'); g.addColorStop(1, 'rgba(200,228,245,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r * 1.35, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(150,195,222,.75)'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+    ctx.lineCap = 'round'; ctx.strokeStyle = '#ffffff'; for (let k = 0; k < 3; k++) { const a0 = T * (7 + k * 2) + k * 2.1; ctx.lineWidth = 2.2 - k * 0.4; ctx.beginPath(); ctx.ellipse(0, 0, r * (0.9 - k * 0.22), r * (0.55 - k * 0.1), k * 0.7, a0, a0 + 2.3); ctx.stroke(); }
+    if (sp > 80) { ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.5; for (const k of [-0.5, 0, 0.5]) { ctx.beginPath(); ctx.moveTo(-Math.sin(ang) * k * r, Math.cos(ang) * k * r); ctx.lineTo(-Math.cos(ang) * r * 2.2 - Math.sin(ang) * k * r, -Math.sin(ang) * r * 2.2 + Math.cos(ang) * k * r); ctx.stroke(); } } // estela al volar
   } else { // bola de fuego: núcleo brillante con llamas que quedan atrás y hacia arriba
     ctx.translate(o.x, o.y);
     ctx.globalCompositeOperation = 'lighter'; const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 2.6); gl.addColorStop(0, 'rgba(255,170,60,.55)'); gl.addColorStop(1, 'rgba(255,90,20,0)'); ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, 0, r * 2.6, 0, TAU); ctx.fill(); ctx.globalCompositeOperation = 'source-over';
@@ -1000,6 +1014,7 @@ function drawDuel(ctx, V) {
   const T = performance.now() / 1000, props = arenaProps();
   ctx.save(); ctx.beginPath(); ctx.rect(V.x0 - 20, TOP, V.x1 - V.x0 + 40, ARENA_D * DEPTH); ctx.clip(); // sólo sobre el suelo
   for (const p of props) if (p.k === 'water') drawPool(ctx, p, T); else drawFireGlow(ctx, p, T);
+  for (const t of PTRS.values()) if (t.src && t.arm && !t.swipe && !t.fired) { const st = propTop(t.src); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2.5; for (let k = 0; k < 2; k++) { const a0 = T * 6 + k * Math.PI; ctx.beginPath(); ctx.ellipse(st.x, st.y + 4, 16, 16 * DEPTH, 0, a0, a0 + 2); ctx.stroke(); } } // el punto del suelo de donde sacas el aire gira
   for (const t of PTRS.values()) if (t.prop >= 0 && t.arm) { const p = props[t.prop], y = TOP + p.y * DEPTH - (p.k === 'water' ? 6 : FIRE_H), rr = p.r + 8 + 2 * Math.sin(T * 8); ctx.strokeStyle = p.k === 'water' ? 'rgba(190,235,255,.85)' : 'rgba(255,220,120,.85)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(p.x, y, rr, rr * DEPTH, 0, 0, TAU); ctx.stroke(); } // el pozo o la llama que tocas brilla
   ctx.restore();
   for (const m of G.ms) { const k = clamp(1 - m.z / 160, 0.45, 1); ctx.fillStyle = `rgba(30,20,10,${0.28 * k})`; ctx.beginPath(); ctx.ellipse(m.gx, m.gy, m.r * 1.15 * m.s * k, m.r * 0.42 * m.s * k, 0, 0, TAU); ctx.fill(); } // sombras (más chicas mientras más alto salta)

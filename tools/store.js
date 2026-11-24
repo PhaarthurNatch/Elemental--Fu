@@ -47,6 +47,22 @@ const path = require('path');
     await p.waitForTimeout(900); await t('touchEnd', []); await p.waitForTimeout(700); }
   const fireN = await p.evaluate(() => G.orbs.filter(o => o.docked && o.k === 'fire').length);
   if (fireN !== 3) errs.push('fuego: no quedaron 3 orbitando: ' + fireN);
+  // aire: cualquier punto del suelo es una fuente. Tocar = saltar; mantener = escudo; arrastrar despacio = esfera de aire que se guarda y orbita
+  await p.evaluate(() => { document.getElementById('btnBack').click(); document.querySelector('.elbtn[data-el="aire"]').click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foeTest = false; G.foe.wait = 99; G.foe.el = 'tierra'; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; });
+  await p.waitForTimeout(600);
+  const fl = await p.evaluate(() => { const v = view(); return { x: v.ox + ARENA_W * 0.2 * v.k, y: v.oy + (TOP + ARENA_D * 0.45 * DEPTH) * v.k }; });
+  const me3 = await p.evaluate(() => { const v = view(), c = G.me.nodes[G.me.ix.upper]; return { x: v.ox + c.x * v.k, y: v.oy + (c.y + 4 * G.me.s) * v.k }; });
+  await t('touchStart', [{ x: fl.x, y: fl.y }]); await p.waitForTimeout(60); await t('touchEnd', []); await p.waitForTimeout(80);
+  const airJump = await p.evaluate(() => G.me.z > 0); await p.waitForTimeout(900);
+  await t('touchStart', [{ x: fl.x, y: fl.y }]); await p.waitForTimeout(1500);
+  const airShield = await p.evaluate(() => ({ flow: G.flow.filter(q => q.k === 'air').length, sh: G.me.shield })); await t('touchEnd', []); await p.waitForTimeout(400);
+  await t('touchStart', [{ x: fl.x, y: fl.y }]); await p.waitForTimeout(60);
+  for (let i = 1; i <= 25; i++) { await t('touchMove', [{ x: fl.x + (me3.x - fl.x) * i / 25, y: fl.y + (me3.y - fl.y) * i / 25 }]); await p.waitForTimeout(30); }
+  await p.waitForTimeout(150); const airOrb = await p.evaluate(() => G.orbs.filter(o => o.k === 'air' && o.docked).length); await t('touchEnd', []); await p.waitForTimeout(300);
+  console.log({ airJump, airShield, airOrb });
+  if (!airJump) errs.push('aire: tocar el suelo no saltó');
+  if (!(airShield.flow > 0 && airShield.sh > 0.1)) errs.push('aire: mantener el suelo no hizo escudo');
+  if (airOrb !== 1) errs.push('aire: no salió/guardó la esfera de aire');
   console.log({ early, extra, docked, maxOk, fireN, still: still && still.toFixed(1), back, flying, dmg: dmg.toFixed(1) });
   if (early !== 1) errs.push('no se adosó de inmediato');
   if (extra.orbs || extra.splash) errs.push('al adosar salió otra esfera o una salpicadura: ' + JSON.stringify(extra));
