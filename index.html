@@ -113,8 +113,8 @@ const OL = '#141019'; // contorno
 const STANCE = { crouch: 0.17, feet: 7, knee: 4.5, kneeFwd: 3, stagger: 4, elbowX: 4.5, elbowY: -1.5, fistIn: 4.5, fistFwd: 6, fistUpF: -14.7, fistUpB: -8.8, fistF: 1.3, fistB: 0.85 };
 const TOR_D = 0.6;  // grosor del torso respecto de su ancho (de perfil se ve así de angosto)
 const ARM_GAIN = 0.45, ARM_MAX = 2.0; // brazos con el dedo: cuánto se mueve la mano por cada punto que mueves el dedo y hasta cuántas veces el largo del brazo se estira
-const TAP_MOVE = 14;  // px: si el dedo se mueve menos que esto es un toque (salta); si se mueve más, mueve el brazo
-const JUMP = { min: 230, max: 520, t0: 0.06, t1: 0.45, g: 1100 }; // salto: toque rápido = salto corto, un poco más largo = más fuerte (hasta t1 s)
+const TAP_MOVE = 14;  // px: si el dedo se mueve menos que esto es un toque; si se mueve más, mueve el brazo
+const JUMP = { g: 1100 }; // gravedad del saltito al impulsarse (ya no se salta tocando la pantalla, pedido del dueño)
 const JOY_R = 44;     // palanca para caminar (sólo en el link de prueba, donde no llega la inclinación)
 const TURN = 5;
 // Tomar el elemento (pedido del dueño): tocar un pozo o una llama y arrastrar saca una esfera de agua o una bola de fuego, sólo si eres de ese elemento
@@ -122,10 +122,15 @@ const ORB = { r: 11, k: 170, z: 0.6, fall: 520, fade: 0.55 }; // tamaño, resort
 const PROP_EL = { water: 'agua', fire: 'fuego', air: 'aire', earth: 'tierra' }; // el aire y la tierra se sacan de cualquier parte del suelo (salvo las fuentes de fuego y agua), pedido del dueño
 const AIR_SHOT = { range: 170, per: 45 }; // la corriente de aire lanzada se disipa después de este recorrido (+ `per` por cada nivel del anillo): si el rival está muy lejos no lo alcanza
 const MAX_ROCKS = 10; // piedras que pueden quedar en el suelo
+const ROCK_LAG = 4.5; // las piedras guardadas tardan ~medio segundo en alcanzar al personaje cuando se mueve
 const EARTH_PULL = 0.75; // sacar una piedra del suelo tarda más que tomar una que ya está en el piso (pedido del dueño)
 const AIR_CHARGE = { hold: 0.3, rate: 1.1, start: 0.35 }; // aire: mantener presionado en cualquier parte carga el anillo de viento (pedido del dueño): espera, niveles por segundo, nivel con que empieza
 // Piedra gigante (tierra, pedido del dueño): el mismo gesto de la llamarada levanta una roca grande delante tuyo que te defiende de todo; al soltar el dedo sale lanzada y deja un surco en el suelo
 const BOULDER = { size: 2.3, dist: 50, rise: 0.35, v: 520, life: 1.3, dmg: 24, kb: 1.6, hpBeam: 0.006, hpFire: 0.012, hpOrb: 0.25 }; // tamaño (× esfera), distancia delante tuyo, segundos en subir, velocidad, duración del vuelo, daño, empujón, cuánto la gastan las llamas/gotas/viento, el fuego, una esfera
+// Estelas (pedido del dueño): mover rápido la bola de fuego o la esfera de agua que tienes en la mano deja una estela larga; el aire la hace deslizando el dedo por la pantalla (y daña al rival si pasa por él).
+// Bloquean ataques del otro: agua bloquea aire, tierra y fuego; fuego bloquea aire, el agua la atraviesa debilitada y más chica, la tierra pasa como si nada; aire bloquea fuego y agua, no la tierra
+const WAKE = { v: 330, airV: 380, gap: 7, max: 450, life: { fire: 1.4, water: 1.2, air: 1.1 }, r: { fire: 9, water: 8, air: 10 }, fallT: 0.5, airDmg: 10, use: 0.34 }; // rapidez mínima de la esfera (y del dedo, para el aire, px/s), distancia entre puntos, máximo de puntos, duración, grosor, cuándo empieza a caer el agua, daño de la estela de aire, cuánto se gasta al bloquear
+const WAKE_RULE = { water: { air: 'block', earth: 'block', fire: 'block' }, fire: { air: 'block', water: 'weaken' }, air: { fire: 'block', water: 'block' } };
 const THRUST_HOP = 230; // al impulsarte con fuego o aire das un saltito hacia allá; luego los pies se deslizan levantando tierra
 // Escudo (pedido del dueño): mantener presionado tu pozo o tu llama trae una corriente que te rodea como una esfera; el daño que recibes baja según cuánto elemento tienes alrededor
 const STREAM = { hold: 0.35, rate: 38, t: 0.75, per: 0.014, decay: 0.035 }; // espera antes de que empiece, gotas/llamas por segundo, segundos que tardan en llegar, escudo que suma cada una, cuánto se gasta solo por segundo
@@ -276,7 +281,6 @@ class Fighter {
     }
   }
   step(dt) { this.animate(dt); this.rigStep(dt / 2); this.rigStep(dt / 2); }
-  jump(v) { if (this.z > 0 || this.vz > 0) return false; this.vz = v; this.charge = 0; return true; }
   air(dt) { // salto: sube y cae con gravedad; al caer se agacha un instante
     this.landK = Math.max(0, (this.landK || 0) - dt * 4);
     if (this.z > 0 || this.vz > 0) { this.vz -= JUMP.g * dt; this.z += this.vz * dt; if (this.z <= 0) { this.z = 0; this.landK = Math.min(1, -this.vz / 500); this.vz = 0; return true; } }
@@ -536,7 +540,6 @@ const endPtr = (e, up) => {
   else if (up && G && G.phase === 'fight' && p.swipe && !p.beam && !p.fired && !fireDocked(p)) { if (G.me.el === 'tierra') { const o = raiseBoulder(p, G.me); if (o) { o.rise = 1; launchBoulder(o); } } else startBeam(p, G.me, performance.now() + BEAM.burst * 1000); } // soltó pronto después de deslizar: dispara la esfera guardada o una llamarada/ráfaga corta (tierra: lanza la roca grande de inmediato)
   if (p.beam) p.beam.stopAt = Math.max(performance.now(), p.beam.t0 + BEAM.burst * 1000); // al soltar, la llamarada se corta
   if (p.arm && !(p.arm.relAt > performance.now())) p.arm.ctl = null; // al soltar, el brazo vuelve a su posición (salvo que esté terminando un gesto)
-  else if (up && !p.moved && G && G.phase === 'fight') { const d = (performance.now() - p.t0) / 1000; G.me.jump(lerp(JUMP.min, JUMP.max, clamp((d - JUMP.t0) / (JUMP.t1 - JUMP.t0), 0, 1))); }
   if (G) G.me.charge = 0;
 };
 cv.addEventListener('pointerup', e => endPtr(e, true)); cv.addEventListener('pointercancel', e => endPtr(e, false));
@@ -561,7 +564,7 @@ function startDuel(el) {
   const foe = new Fighter(fel, SKINS[Math.floor(Math.random() * SKINS.length)], 'Rival');
   me.isMe = true; me.x = ARENA_W * 0.5; me.y = ARENA_D * 0.75; foe.x = ARENA_W * 0.5; foe.y = ARENA_D * 0.25;
   foe.home = { x: foe.x, y: foe.y }; foe.wait = 1.5; foe.goal = null;
-  G = { foeTest: FOE_TEST, ms: [me, foe], me, foe, dust: [], orbs: [], fx: [], flow: [], splashes: [], beams: [], trails: [], texts: [], inp: { x: 0, y: 0 }, t: 0 };
+  G = { foeTest: FOE_TEST, ms: [me, foe], me, foe, dust: [], orbs: [], fx: [], flow: [], splashes: [], beams: [], trails: [], wakes: [], texts: [], inp: { x: 0, y: 0 }, t: 0 };
   $('fighters').innerHTML = G.ms.map((m, i) => `<div class="fcard${m.isMe ? ' me' : ''}"><div class="nm"><span class="chip" id="chip${i}" style="background:${m.E.robe}"></span>${m.name}</div><div class="el" id="el${i}">${m.E.n}</div><div class="hpb"><i id="hp${i}"></i></div><div class="shb"><i id="sh${i}" style="background:${m.E.trim}"></i></div></div>`).join('');
   $('pick').hidden = true; $('hud').hidden = false; $('btnCal').hidden = true; scene = 'duel';
   me.ph = me.phT = Math.atan2(foe.x - me.x, foe.y - me.y); foe.ph = foe.phT = Math.atan2(me.x - foe.x, me.y - foe.y); me.guard = me.guardK = foe.guard = foe.guardK = 1;
@@ -620,13 +623,13 @@ function duelStep(dt) {
   for (const m of G.ms) for (const o of arenaProps()) { if (o.k === 'fire' && m.z > FIRE_H + 4) continue; const dx = m.x - o.x, dy = m.y - o.y, d = Math.hypot(dx, dy) || 1e-3, mn = o.r + (o.k === 'water' ? 6 : 0) + m.r * 0.7; if (d < mn) { m.x = o.x + dx / d * mn; m.y = o.y + dy / d * mn; const vn = (m.vx * dx + m.vy * dy) / d; if (vn < 0) { m.vx -= vn * dx / d; m.vy -= vn * dy / d; } } } // no se atraviesan el fuego ni el pozo (el fuego se puede saltar)
   { const dx = foe.x - me.x, dy = foe.y - me.y, d = Math.hypot(dx, dy) || 1e-3, mn = me.r + foe.r; if (d < mn) { const p = (mn - d) / 2, ux = dx / d, uy = dy / d; me.x -= ux * p; me.y -= uy * p; foe.x += ux * p; foe.y += uy * p; } } // no se atraviesan
   for (const m of G.ms) { const o = m === me ? foe : me, dx = o.x - m.x, dy = o.y - m.y; if (Math.hypot(dx, dy) > 4) m.phT = Math.atan2(dx, dy); m.phT += touchTurn(m, m.phT); m.guard = 1; } // siempre se miran entre sí (de frente, de lado, de espaldas o entremedio), salvo que un brazo necesite girar el cuerpo
-  { const now = performance.now(), held = [...PTRS.values()].find(p => !p.moved); me.charge = held && me.z === 0 && fight ? clamp(((now - held.t0) / 1000 - JUMP.t0) / (JUMP.t1 - JUMP.t0), 0, 1) : 0; } // mantener el dedo sin moverlo: se agacha cargando el salto
+  me.charge = 0; // ya no se salta tocando la pantalla (pedido del dueño)
   for (const m of G.ms) if (m.slide > 0) { m.slide -= dt; const sp = Math.hypot(m.vx, m.vy); if (m.z === 0 && sp > 30 && Math.random() < dt * 30) G.dust.push({ x: m.x + (Math.random() - 0.5) * 16, y: m.y, z: 1, vx: -m.vx * 0.25, life: 0.55, r: 3 + Math.random() * 2.5 }); } // los pies se deslizan levantando tierra
   for (const m of G.ms) if (m.air(dt)) for (let i = 0; i < 6; i++) G.dust.push({ x: m.x + (Math.random() - 0.5) * 22, y: m.y + (Math.random() - 0.5) * 6, z: 1, vx: (Math.random() - 0.5) * 60, life: 0.5, r: 3 + Math.random() * 2 }); // polvo al caer
   for (const m of G.ms) { place(m); m.step(dt); }
   for (const q of G.dust) { q.life -= dt; q.x += q.vx * dt; q.z += 12 * dt; q.r += 6 * dt; }
   G.dust = G.dust.filter(q => q.life > 0);
-  orbStep(dt); flowStep(dt); splashStep(dt); beamStep(dt);
+  wakeStep(dt); orbStep(dt); flowStep(dt); splashStep(dt); beamStep(dt);
   for (const m of G.ms) { m.shield = Math.max(0, m.shield - STREAM.decay * dt); m.downK += ((G.phase === 'ko' && m.hp <= 0 ? 1 : 0) - m.downK) * Math.min(1, dt * 6); }
   for (const t of G.texts) { t.life -= dt; t.y -= 28 * dt; } G.texts = G.texts.filter(t => t.life > 0);
   if (G.phase === 'fight' && G.ms.some(m => m.hp <= 0)) { G.phase = 'ko'; G.koT = KO_S; clearTouches(); }
@@ -704,7 +707,7 @@ function drawShield(ctx, m, T) { // esfera de agua alrededor del personaje: más
 }
 function hitFighter(m, o) { // la esfera lanzada golpea
   const fade = o.k === 'air' ? clamp(o.life * 1.6, 0.3, 1) : 1; // la corriente de aire pierde fuerza mientras se disipa
-  dealDamage(m, THROW.dmg * (1 + 0.5 * ((o.lvl || 1) - 1)) * fade, o.vx, o.vy, (o.k === 'air' ? 1.6 : o.k === 'water' ? 1.1 : o.k === 'earth' ? 1 : 0.6) * fade); orbFx(o, 18); // más grande, más daño
+  dealDamage(m, THROW.dmg * (1 + 0.5 * ((o.lvl || 1) - 1)) * fade * (o.dmgK || 1), o.vx, o.vy, (o.k === 'air' ? 1.6 : o.k === 'water' ? 1.1 : o.k === 'earth' ? 1 : 0.6) * fade); orbFx(o, 18); // más grande, más daño
 }
 function dealDamage(m, raw, vx, vy, kbK = 1) { // daño con o sin escudo: baja según cuánto elemento tiene alrededor, y el escudo se gasta
   const o = { vx, vy }, sp = Math.hypot(vx, vy), red = SHIELD.block * m.shield, dmg = raw * (1 - red);
@@ -772,6 +775,50 @@ function launch(o, vx, vy, owner) { // sale lanzada: vuela y daña al que golpea
 function stoneDrop(o) { // la piedra se detiene y cae al suelo (queda ahí y el maestro tierra la puede volver a tomar)
   o.thrown = o.held = o.docked = false; o.fall = true; o.rest = false; o.gy = o.y + 22; o.vx *= 0.25; o.vy = Math.min(o.vy * 0.2, -60); o.life = 1; o.hp = 1; o.lvl = 1; o.spin *= 0.5;
   for (let i = 0; i < 5; i++) orbFx(o, 1);
+}
+function addWake(k, owner, x, y, src) { // agrega puntos de estela desde el último hasta (x, y)
+  const last = src.wake && src.wake.life > 0 ? src.wake : null, d = last ? Math.hypot(x - last.x, y - last.y) : WAKE.gap, n = last ? Math.floor(d / WAKE.gap) : 1, made = [];
+  for (let i = 1; i <= n; i++) { const t = last ? i / n : 1, w = { k, owner, x: last ? lerp(last.x, x, t) : x, y: last ? lerp(last.y, y, t) : y, vy: 0, age: 0, life: WAKE.life[k], max: WAKE.life[k], r: WAKE.r[k], hp: 1, prev: src.wake && src.wake.life > 0 ? src.wake : null, ph: Math.random() * TAU }; src.wake = w; G.wakes.push(w); made.push(w); }
+  if (G.wakes.length > WAKE.max) G.wakes.splice(0, G.wakes.length - WAKE.max);
+  return made;
+}
+function segD(px, py, w) { const a = w.prev && w.prev.life > 0 ? w.prev : w, dx = w.x - a.x, dy = w.y - a.y, L = dx * dx + dy * dy, t = L ? clamp(((px - a.x) * dx + (py - a.y) * dy) / L, 0, 1) : 0; return Math.hypot(px - a.x - dx * t, py - a.y - dy * t); }
+function wakeStep(dt) {
+  const now = performance.now();
+  if (G.me.el === 'aire' && G.phase === 'fight') for (const p of PTRS.values()) { // aire: deslizar el dedo deja una estela de viento (y golpea al rival si pasa por él)
+    if (!p.moved || p.charging || !p.hist || p.hist.length < 2) { p.wake = null; continue; }
+    const h0 = p.hist[p.hist.length - 2], v = Math.hypot(p.x - h0.x, p.y - h0.y) / Math.max(0.008, (now - h0.t) / 1000);
+    if (v < WAKE.airV && !p.wake) continue;
+    const w = toWorld(p.x, p.y), made = addWake('air', G.me, w.x, w.y, p), foe = G.foe;
+    if (!p.wakeHit) for (const q of made) { const top = foe.nodes[foe.ix.head].y - BODY.head * 0.6 * foe.s; if (Math.abs(q.x - foe.gx) < BODY.torW * 0.6 * foe.s + q.r && q.y > top && q.y < foe.gy + 2) { p.wakeHit = true; const a = q.prev || q, dx = q.x - a.x, dy = q.y - a.y, d = Math.hypot(dx, dy) || 1; dealDamage(foe, WAKE.airDmg, dx / d * 300, dy / d * 300, 1); for (let i = 0; i < 6; i++) orbFx({ k: 'air', x: q.x, y: q.y, vx: 0, vy: 0 }, 1); break; } }
+  }
+  for (const w of G.wakes) { // se disipan; el agua cae al piso y desaparece
+    w.age += dt; w.life -= dt;
+    if (w.k === 'water' && w.age > WAKE.fallT) { w.vy += 520 * dt; w.y += w.vy * dt; if (Math.random() < dt * 3) fxPush({ k: 'drop', x: w.x, y: w.y, vx: rnd(-20, 20), vy: w.vy * 0.5, g: 500, life: 0.4, r: rnd(1.4, 2.4) }); }
+    if (w.life <= 0 || w.hp <= 0) continue;
+    for (const B of G.beams) { if (B.owner === w.owner) continue; const rule = (WAKE_RULE[w.k] || {})[B.k]; if (!rule) continue; // llamaradas, ráfagas y chorros
+      for (const q of B.parts) { if (q.life <= 0 || segD(q.x, q.y, w) > w.r + q.r * 0.6) continue;
+        if (rule === 'block') { q.life = 0; blockFx(B.k, q.x, q.y, q.vx, q.vy); w.hp -= WAKE.use * 0.12; }
+        else if (!q.weak) { q.weak = true; q.r *= 0.55; q.I *= 0.5; clashFx(w.k, B.k, q.x, q.y, q.vx, q.vy); } } }
+    for (const o of G.orbs) { if (!o.thrown || o.life <= 0 || o.owner === w.owner) continue; const rule = (WAKE_RULE[w.k] || {})[o.k]; if (!rule || segD(o.x, o.y, w) > w.r + orbR(o) * (o.k === 'air' ? 1.4 : 0.8)) continue; // esferas, piedras y corrientes lanzadas
+      if (rule === 'block') { for (let i = 0; i < 6; i++) clashFx(w.k, o.k, o.x, o.y, o.vx, o.vy); if (o.k === 'earth') o.big ? breakBoulder(o) : stoneDrop(o); else { o.life = 0; o.fxDone = true; } w.hp -= WAKE.use; }
+      else if (!o.weak) { o.weak = true; o.size = (o.size || 1) * 0.6; o.dmgK = 0.5; for (let i = 0; i < 6; i++) clashFx(w.k, o.k, o.x, o.y, o.vx, o.vy); } } // el agua atraviesa el fuego, pero debilitada y más chica
+    for (const S of G.splashes) { if (S.owner === w.owner || (WAKE_RULE[w.k] || {})[S.k] !== 'block') continue; for (const q of S.parts) if (q.life > 0 && segD(q.x, q.y, w) < w.r + q.r) { q.life = 0; blockFx(S.k, q.x, q.y, q.vx, q.vy); } }
+    if (w.hp <= 0) w.life = Math.min(w.life, 0.15);
+  }
+  G.wakes = G.wakes.filter(w => w.life > 0);
+}
+function drawWakes(ctx, T) { // estelas: llamas que se apagan, una cinta de agua que cae, viento que se disipa
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const w of G.wakes) { const f = clamp(w.life / w.max, 0, 1), a = w.prev && w.prev.life > 0 ? w.prev : null;
+    if (w.k === 'fire') { const r = w.r * (0.45 + 0.55 * f) * (1 + 0.15 * Math.sin(T * 14 + w.ph));
+      ctx.globalAlpha = Math.min(1, f * 2) * 0.85; ctx.fillStyle = f > 0.6 ? '#ff8a1f' : '#e2401c'; ctx.beginPath(); ctx.moveTo(w.x - r, w.y + r * 0.4); ctx.quadraticCurveTo(w.x - r * 0.9, w.y - r * 1.2, w.x + Math.sin(T * 7 + w.ph) * 2, w.y - r * 2.1); ctx.quadraticCurveTo(w.x + r * 0.9, w.y - r * 1.2, w.x + r, w.y + r * 0.4); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffd25a'; ctx.globalAlpha *= 0.9; ctx.beginPath(); ctx.arc(w.x, w.y, r * 0.5, 0, TAU); ctx.fill(); }
+    else if (w.k === 'water') { if (!a) continue; for (const [col, wk] of [['#2f86d6', 1.5], ['#7cc8f4', 0.8], ['rgba(240,252,255,.9)', 0.25]]) { ctx.globalAlpha = Math.min(1, f * 2.5) * 0.85; ctx.strokeStyle = col; ctx.lineWidth = w.r * wk; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(w.x + 0.01, w.y); ctx.stroke(); } }
+    else { if (!a) continue; const wob = Math.sin(T * 9 + w.ph) * 2; ctx.globalAlpha = Math.min(1, f * 2) * 0.35; ctx.strokeStyle = '#a9d4ea'; ctx.lineWidth = w.r * 2; ctx.beginPath(); ctx.moveTo(a.x, a.y + wob); ctx.lineTo(w.x + 0.01, w.y - wob); ctx.stroke();
+      ctx.globalAlpha = Math.min(1, f * 2) * 0.85; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(a.x, a.y - w.r * 0.4 + wob); ctx.lineTo(w.x + 0.01, w.y - w.r * 0.4 - wob); ctx.moveTo(a.x, a.y + w.r * 0.4 - wob); ctx.lineTo(w.x + 0.01, w.y + w.r * 0.4 + wob); ctx.stroke(); }
+  }
+  ctx.restore();
 }
 function shatter(o) { // la piedra se rompe en pedazos
   o.life = 0; o.fxDone = true; o.dead = true; o.thrown = o.held = o.docked = o.fall = o.rest = o.raised = false; for (let i = 0; i < 10 * (o.big ? 2 : 1); i++) fxPush({ k: 'chip', x: o.x + rnd(-6, 6) * (o.size || 1), y: o.y + rnd(-6, 6) * (o.size || 1), vx: rnd(-170, 170), vy: rnd(-220, -20), g: 520, life: rnd(0.4, 0.8), r: rnd(1.2, 2.6) * (o.big ? 1.4 : 1) });
@@ -1010,7 +1057,7 @@ function newRound() { // otra ronda después del K.O.
   const { me, foe } = G; clearTouches();
   for (const m of G.ms) { m.hp = HP_MAX; m.shield = 0; m.breath = 1; m.slide = 0; m.bould = null; m.vx = m.vy = 0; m.z = m.vz = 0; }
   me.x = ARENA_W * 0.5; me.y = ARENA_D * 0.75; foe.x = ARENA_W * 0.5; foe.y = ARENA_D * 0.25; foe.home = { x: foe.x, y: foe.y }; foe.goal = null; foe.wait = 1.5;
-  G.orbs = []; G.flow = []; G.splashes = []; G.beams = []; G.trails = []; G.clash = null; foe.cyT = 1.2; if (foe.el === 'agua' && !G.foeTest) giveBubble(foe, 2); G.phase = 'count'; G.cd = COUNT_S + GO_S;
+  G.orbs = []; G.flow = []; G.splashes = []; G.beams = []; G.trails = []; G.wakes = []; G.clash = null; foe.cyT = 1.2; if (foe.el === 'agua' && !G.foeTest) giveBubble(foe, 2); G.phase = 'count'; G.cd = COUNT_S + GO_S;
 }
 function orbFx(o, n) { // gotitas o chispas que suelta la esfera
   for (let i = 0; i < n; i++) { const a = Math.random() * TAU, sp = 20 + Math.random() * 70;
@@ -1029,6 +1076,7 @@ function orbStep(dt) {
       const w = toWorld(p.x, p.y), c = 2 * ORB.z * Math.sqrt(ORB.k);
       o.vx += ((w.x - o.x) * ORB.k - o.vx * c) * dt; o.vy += ((w.y - o.y) * ORB.k - o.vy * c) * dt;
       if (p.arm && p.arm.ctl) { p.arm.ctl.x = o.x; p.arm.ctl.y = o.y; } // la mano apunta a la esfera
+      if ((o.k === 'fire' || o.k === 'water') && (Math.hypot(o.vx, o.vy) > WAKE.v || (o.wake && o.wake.life > 0 && o.wake.age < 0.05))) addWake(o.k, G.me, o.x, o.y, o); else o.wake = null; // moverla rápido deja una estela larga
       const me = G.me, ch = me.nodes[me.ix.upper], near = Math.abs(o.x - me.gx) < BODY.torW * 0.6 * me.s + ORB.r * 0.6 && o.y > me.nodes[me.ix.head].y - BODY.head * 0.6 * me.s && o.y < me.gy + 2, /* la esfera toca a tu personaje */ mine = G.orbs.filter(q => q.docked && q.owner === me), one = o.k === 'water' || o.k === 'air', wd = one && mine.find(q => q.k === o.k), full = one ? wd && wd.lvl >= DOCK.max : mine.length >= DOCK.max; // fuego y tierra: hasta 3 orbitando; agua y aire: una (burbuja / anillo) que crece hasta 3
       if (near && !full) { // al tocar a tu personaje se adosa de inmediato (pedido del dueño: ya no hay que mantenerla ahí)
         o.held = false; p.orb = null; p.docked = true; if (p.arm) { p.arm.ctl = null; p.arm = null; }
@@ -1043,7 +1091,8 @@ function orbStep(dt) {
     } else if (o.docked && o.k === 'air') { // aire guardado: un anillo de viento que gira rápido alrededor de tu personaje (más ancho y grande con cada aire que le pones)
       const m = o.owner, c = m.nodes[m.ix.upper]; o.x = c.x; o.y = c.y + 4 * m.s; o.vx = o.vy = 0; o.life = 1; o.back = false; o.lvlS = (o.lvlS || 1) + (o.lvl - (o.lvlS || 1)) * Math.min(1, dt * 5);
     } else if (o.docked) { // fuego o piedras guardadas: orbitan alrededor de tu personaje, a la altura del pecho (las piedras más lento y además giran en su eje)
-      const m = o.owner, c = m.nodes[m.ix.upper], idx = G.orbs.filter(q => q.docked && q.owner === m && q.k === o.k).indexOf(o), an = performance.now() / 1000 * (o.k === 'earth' ? 1 : 1.4) + idx * TAU / DOCK.max; // repartidas en la órbita
+      const m = o.owner, ch = m.nodes[m.ix.upper], idx = G.orbs.filter(q => q.docked && q.owner === m && q.k === o.k).indexOf(o), an = performance.now() / 1000 * (o.k === 'earth' ? 1 : 1.4) + idx * TAU / DOCK.max; // repartidas en la órbita
+      if (o.ax == null) { o.ax = ch.x; o.ay = ch.y; } const lag = o.k === 'earth' ? Math.min(1, dt * ROCK_LAG) : 1; o.ax += (ch.x - o.ax) * lag; o.ay += (ch.y - o.ay) * lag; const c = { x: o.ax, y: o.ay }; // las piedras son pesadas: siguen al personaje con medio segundo de retraso (pedido del dueño)
       o.back = Math.sin(an) < 0; // en la mitad de atrás de la órbita pasa por detrás del personaje
       const tx = c.x + Math.cos(an) * DOCK.orbX * m.s, ty = c.y - 2 * m.s + Math.sin(an) * DOCK.orbY * m.s + Math.sin(o.t * 3 + idx) * 2, k = 90, cc = 2 * 0.7 * Math.sqrt(k);
       o.vx += ((tx - o.x) * k - o.vx * cc) * dt; o.vy += ((ty - o.y) * k - o.vy * cc) * dt; o.life = 1;
@@ -1159,7 +1208,7 @@ function drawDuel(ctx, V) {
   for (const m of G.ms) if (m.isMe) { ctx.strokeStyle = 'rgba(255,200,97,.8)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(m.gx, m.gy, m.r * 1.4 * m.s, m.r * 0.5 * m.s, 0, 0, TAU); ctx.stroke(); } // anillo dorado: tú
   for (const q of G.dust) { ctx.fillStyle = `rgba(200,180,140,${q.life * 0.7})`; ctx.beginPath(); ctx.arc(q.x, TOP + q.y * DEPTH - q.z, q.r, 0, TAU); ctx.fill(); }
   for (const it of [...G.ms.map(m => ({ y: m.y, m })), ...props.filter(p => p.k === 'fire').map(p => ({ y: p.y, p })), ...G.orbs.filter(o => o.big).map(o => ({ y: (o.gy - TOP) / DEPTH, o }))].sort((a, b) => a.y - b.y)) it.o ? drawOrb(ctx, it.o, T) : it.m ? (G.orbs.forEach(o => { if (o.docked && o.owner === it.m) o.k === 'air' ? drawRing(ctx, o, T, true) : o.back && drawOrb(ctx, o, T); }), it.m.draw(ctx), G.orbs.forEach(o => { if (o.docked && o.owner === it.m) o.k === 'air' ? drawRing(ctx, o, T, false) : !o.back && drawOrb(ctx, o, T); }), drawShield(ctx, it.m, T)) : drawFire(ctx, it.p, T); // por profundidad (el fuego tapa o queda detrás de los personajes)
-  drawFlow(ctx); drawSplash(ctx); drawBeams(ctx); drawFx(ctx); for (const o of G.orbs) if (!o.docked && !o.rest && !o.fall && !o.big) drawOrb(ctx, o, T); // el elemento que tomaste va por encima (las que orbitan, con su personaje)
+  drawWakes(ctx, T); drawFlow(ctx); drawSplash(ctx); drawBeams(ctx); drawFx(ctx); for (const o of G.orbs) if (!o.docked && !o.rest && !o.fall && !o.big) drawOrb(ctx, o, T); // el elemento que tomaste va por encima (las que orbitan, con su personaje)
   ctx.textAlign = 'center'; for (const t of G.texts) { ctx.globalAlpha = clamp(t.life * 2.5, 0, 1); ctx.font = `900 ${t.small ? 11 : 18}px system-ui, sans-serif`; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,10,30,.85)'; ctx.strokeText(t.str, t.x, t.y); ctx.fillStyle = t.col; ctx.fillText(t.str, t.x, t.y); } ctx.globalAlpha = 1;
 }
 function drawBig(ctx, txt, f) { // letras grandes (K.O.)

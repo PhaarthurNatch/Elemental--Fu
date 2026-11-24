@@ -61,7 +61,7 @@ const { chromium, devices } = require('playwright');
   if (!(follow > reach.dx + 10)) errs.push('la mano no siguió al dedo');
   if (jumped || !freed) errs.push('saltó o el brazo no se soltó al tocar la llama');
   console.log({ z1: z1.toFixed(0), z2: z2.toFixed(0), charge: ch.toFixed(2), before, during, both, after, back });
-  if (!(z1 > 5 && z2 > z1 * 2)) errs.push('salto no depende del toque');
+  if (z1 > 0.5 || z2 > 0.5) errs.push('todavía salta al tocar la pantalla');
   if (!during || !(during.x > before.x + 10 && during.y < before.y - 10)) errs.push('el brazo no siguió al dedo');
   if (both !== 2) errs.push('no se controlan los dos brazos a la vez');
   if (after.ctl !== 0 || Math.hypot(back.rx - before.rx, back.ry - before.ry) > 4) errs.push('el brazo no volvió');

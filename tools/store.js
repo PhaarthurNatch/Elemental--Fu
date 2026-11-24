@@ -62,7 +62,7 @@ const path = require('path');
   await t('touchStart', [{ x: fl.x, y: fl.y }]); await p.waitForTimeout(60); for (let i = 1; i <= 25; i++) { await t('touchMove', [{ x: fl.x + i * 4, y: fl.y - i * 3 }]); await p.waitForTimeout(30); }
   const airHeld = await p.evaluate(() => G.orbs.filter(o => o.held).length); await t('touchEnd', []); await p.waitForTimeout(300);
   console.log({ airJump, ring1, ring, noJump, airHeld });
-  if (!airJump) errs.push('aire: tocar no saltó');
+  if (airJump) errs.push('aire: tocar todavía salta');
   if (!(ring1.lvl > 0.3 && ring1.lvl < 2.5 && !ring1.flow && !ring1.sh)) errs.push('aire: mantener no empezó a cargar el anillo (o hizo escudo): ' + JSON.stringify(ring1));
   if (!(ring.length === 1 && ring[0] === 3 && noJump)) errs.push('aire: el anillo no se cargó hasta 3 o saltó al soltar: ' + ring);
   if (airHeld) errs.push('aire: todavía saca aire del suelo');
