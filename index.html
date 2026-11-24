@@ -44,6 +44,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .logo span{-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:1.5px rgba(10,14,20,.6);filter:drop-shadow(0 3px 0 rgba(0,0,0,.45))}
 .logo .el4{background-image:linear-gradient(90deg,#4aa6ea 0 25%,#5cc266 25% 50%,#ff6a4a 50% 75%,#ffbb3a 75%)} /* los cuatro elementos */
 .logo .fu{background-image:linear-gradient(180deg,#fff3c4,#ffc861 50%,#ff6a2a);font-size:1.12em}
+#ver{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:0;right:0;text-align:center;color:var(--muted);font-weight:800;font-size:13px;letter-spacing:.5px;opacity:.85}
 #pick p{margin:0 0 8px;color:var(--muted);font-weight:700;font-size:16px}
 .elgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:380px}
 .elbtn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 6px 12px;border-radius:18px;background:var(--panel);box-shadow:0 3px 0 rgba(0,0,0,.4);border:3px solid transparent}
@@ -76,12 +77,14 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
   <p id="calMsg"></p>
 </div>
 <div id="pick">
+  <div id="ver"></div>
   <h1 class="logo" aria-label="Elemental-Fu"><span class="el4">Elemental</span><span class="fu">-Fu</span></h1>
   <p>Elige tu elemento</p>
   <div class="elgrid" id="elGrid"></div>
 </div>
 <script>
 'use strict';
+const VERSION = 'v0.39'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -127,9 +130,9 @@ const EARTH_PULL = 0.75; // sacar una piedra del suelo tarda más que tomar una 
 const AIR_CHARGE = { hold: 0.3, rate: 1.1, start: 0.35 }; // aire: mantener presionado en cualquier parte carga el anillo de viento (pedido del dueño): espera, niveles por segundo, nivel con que empieza
 // Piedra gigante (tierra, pedido del dueño): el mismo gesto de la llamarada levanta una roca grande delante tuyo que te defiende de todo; al soltar el dedo sale lanzada y deja un surco en el suelo
 const BOULDER = { size: 2.3, dist: 50, rise: 0.35, v: 520, life: 1.3, dmg: 24, kb: 1.6, hpBeam: 0.006, hpFire: 0.012, hpOrb: 0.25 }; // tamaño (× esfera), distancia delante tuyo, segundos en subir, velocidad, duración del vuelo, daño, empujón, cuánto la gastan las llamas/gotas/viento, el fuego, una esfera
-// Estelas (pedido del dueño): mover rápido la bola de fuego o la esfera de agua que tienes en la mano deja una estela larga; el aire la hace deslizando el dedo por la pantalla (y daña al rival si pasa por él).
+// Estelas (pedido del dueño): mover rápido la bola de fuego o la esfera de agua que tienes en la mano deja una estela larga; el aire y el fuego también la hacen deslizando el dedo en cualquier parte de la pantalla (y dañan al rival si pasa por él).
 // Bloquean ataques del otro: agua bloquea aire, tierra y fuego; fuego bloquea aire, el agua la atraviesa debilitada y más chica, la tierra pasa como si nada; aire bloquea fuego y agua, no la tierra
-const WAKE = { v: 330, airV: 380, gap: 7, max: 450, life: { fire: 1.4, water: 1.2, air: 1.1 }, r: { fire: 9, water: 8, air: 10 }, fallT: 0.5, airDmg: 10, use: 0.34 }; // rapidez mínima de la esfera (y del dedo, para el aire, px/s), distancia entre puntos, máximo de puntos, duración, grosor, cuándo empieza a caer el agua, daño de la estela de aire, cuánto se gasta al bloquear
+const WAKE = { v: 330, airV: 380, gap: 7, max: 450, life: { fire: 1.4, water: 1.2, air: 1.1 }, r: { fire: 9, water: 8, air: 10 }, fallT: 0.5, dmg: 10, use: 0.34 }; // rapidez mínima de la esfera (y del dedo, para el aire, px/s), distancia entre puntos, máximo de puntos, duración, grosor, cuándo empieza a caer el agua, daño de la estela de aire, cuánto se gasta al bloquear
 const WAKE_RULE = { water: { air: 'block', earth: 'block', fire: 'block' }, fire: { air: 'block', water: 'weaken' }, air: { fire: 'block', water: 'block' } };
 const THRUST_HOP = 230; // al impulsarte con fuego o aire das un saltito hacia allá; luego los pies se deslizan levantando tierra
 // Escudo (pedido del dueño): mantener presionado tu pozo o tu llama trae una corriente que te rodea como una esfera; el daño que recibes baja según cuánto elemento tienes alrededor
@@ -785,12 +788,13 @@ function addWake(k, owner, x, y, src) { // agrega puntos de estela desde el últ
 function segD(px, py, w) { const a = w.prev && w.prev.life > 0 ? w.prev : w, dx = w.x - a.x, dy = w.y - a.y, L = dx * dx + dy * dy, t = L ? clamp(((px - a.x) * dx + (py - a.y) * dy) / L, 0, 1) : 0; return Math.hypot(px - a.x - dx * t, py - a.y - dy * t); }
 function wakeStep(dt) {
   const now = performance.now();
-  if (G.me.el === 'aire' && G.phase === 'fight') for (const p of PTRS.values()) { // aire: deslizar el dedo deja una estela de viento (y golpea al rival si pasa por él)
-    if (!p.moved || p.charging || !p.hist || p.hist.length < 2) { p.wake = null; continue; }
+  const fk = G.me.el === 'aire' ? 'air' : G.me.el === 'fuego' ? 'fire' : null; // aire y fuego: deslizar el dedo en cualquier parte deja una estela (y golpea al rival si pasa por él)
+  if (fk && G.phase === 'fight') for (const p of PTRS.values()) {
+    if (!p.moved || p.charging || p.prop >= 0 || p.orb || !p.hist || p.hist.length < 2) { p.wake = null; continue; } // desde la llama, la estela es la de la bola de fuego
     const h0 = p.hist[p.hist.length - 2], v = Math.hypot(p.x - h0.x, p.y - h0.y) / Math.max(0.008, (now - h0.t) / 1000);
     if (v < WAKE.airV && !p.wake) continue;
-    const w = toWorld(p.x, p.y), made = addWake('air', G.me, w.x, w.y, p), foe = G.foe;
-    if (!p.wakeHit) for (const q of made) { const top = foe.nodes[foe.ix.head].y - BODY.head * 0.6 * foe.s; if (Math.abs(q.x - foe.gx) < BODY.torW * 0.6 * foe.s + q.r && q.y > top && q.y < foe.gy + 2) { p.wakeHit = true; const a = q.prev || q, dx = q.x - a.x, dy = q.y - a.y, d = Math.hypot(dx, dy) || 1; dealDamage(foe, WAKE.airDmg, dx / d * 300, dy / d * 300, 1); for (let i = 0; i < 6; i++) orbFx({ k: 'air', x: q.x, y: q.y, vx: 0, vy: 0 }, 1); break; } }
+    const w = toWorld(p.x, p.y), made = addWake(fk, G.me, w.x, w.y, p), foe = G.foe;
+    if (!p.wakeHit) for (const q of made) { const top = foe.nodes[foe.ix.head].y - BODY.head * 0.6 * foe.s; if (Math.abs(q.x - foe.gx) < BODY.torW * 0.6 * foe.s + q.r && q.y > top && q.y < foe.gy + 2) { p.wakeHit = true; const a = q.prev || q, dx = q.x - a.x, dy = q.y - a.y, d = Math.hypot(dx, dy) || 1; dealDamage(foe, WAKE.dmg, dx / d * 300, dy / d * 300, fk === 'air' ? 1 : 0.4); for (let i = 0; i < 6; i++) orbFx({ k: fk, x: q.x, y: q.y, vx: 0, vy: 0 }, 1); break; } }
   }
   for (const w of G.wakes) { // se disipan; el agua cae al piso y desaparece
     w.age += dt; w.life -= dt;
@@ -1290,6 +1294,7 @@ function buildPick() {
 $('btnBack').addEventListener('click', () => { clearTouches(); scene = 'pick'; G = null; calReset(''); $('calib').hidden = true; $('hud').hidden = true; $('pick').hidden = false; buildPick(); });
 $('btnCal').addEventListener('click', () => { centerTilt(); showTip('Centrado', 1200); });
 
+$('ver').textContent = 'Versión ' + VERSION;
 layout(); buildPick(); loop();
 if ('serviceWorker' in navigator && location.protocol === 'https:' && window.top === window) navigator.serviceWorker.register('sw.js').catch(() => { });
 </script>

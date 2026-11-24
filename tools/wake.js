@@ -44,6 +44,17 @@ const { chromium, devices } = require('playwright');
   res.airDmg = hp0 - await p.evaluate(() => G.foe.hp);
   if (!(res.airWake > 10)) errs.push('aire: deslizar no dejó estela');
   if (!(res.airDmg > 5)) errs.push('aire: la estela no dañó al rival');
+  // fuego: deslizar el dedo en cualquier parte también deja estela y golpea
+  await start('fuego');
+  const foeF = await p.evaluate(() => { const v = view(), f = G.foe.nodes[G.foe.ix.upper]; return { x: v.ox + f.x * v.k, y: v.oy + f.y * v.k }; });
+  const hpF = await p.evaluate(() => G.foe.hp);
+  await t('touchStart', [{ x: foeF.x - 120, y: foeF.y }]); await p.waitForTimeout(30);
+  for (let i = 1; i <= 12; i++) { await t('touchMove', [{ x: foeF.x - 120 + i * 20, y: foeF.y + 2 }]); await p.waitForTimeout(25); }
+  res.fireFinger = await p.evaluate(() => G.wakes.filter(w => w.k === 'fire').length); await t('touchEnd', []); await p.waitForTimeout(300);
+  res.fireFingerDmg = hpF - await p.evaluate(() => G.foe.hp);
+  if (!(res.fireFinger > 10 && res.fireFingerDmg > 5)) errs.push('fuego: deslizar no dejó estela o no dañó');
+  res.ver = await p.evaluate(() => { document.getElementById('btnBack').click(); return document.getElementById('ver').textContent; });
+  if (!/Versión v\d/.test(res.ver)) errs.push('no aparece la versión al elegir personaje');
   // tierra: las piedras guardadas siguen al personaje con medio segundo de retraso
   await start('tierra');
   await p.evaluate(() => { for (let i = 0; i < 3; i++) { const c = G.me.nodes[G.me.ix.upper], o = newOrb('earth', c.x, c.y); o.docked = true; o.owner = G.me; o.lvl = 1; G.orbs.push(o); } }); await p.waitForTimeout(800);
