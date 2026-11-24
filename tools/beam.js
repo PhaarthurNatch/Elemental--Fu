@@ -69,6 +69,16 @@ const { chromium, devices } = require('playwright');
   if (!(res.recoil.fuego < -15)) errs.push('fuego: disparar hacia el lado no lo impulsó');
   if (!(+res.recoil.aire < +res.recoil.fuego * 1.4)) errs.push('aire: no impulsó más que el fuego');
   if (!(Math.abs(res.recoil.aireAdelante) < 10)) errs.push('aire: disparar hacia el rival lo movió');
+  // con una llamarada ya en uso, una segunda hacia adelante (otro dedo) sí te impulsa (hacia atrás)
+  const two = async (both) => { await start('fuego'); await p.evaluate(() => { G.foe.y = ARENA_D * 0.15; G.me.y = ARENA_D * 0.55; }); await p.waitForTimeout(300); const y0 = await p.evaluate(() => G.me.y);
+    await t('touchStart', [{ x: 120, y: 640, id: 1 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 120, y: 640 - i * 60, id: 1 }]); await p.waitForTimeout(8); }
+    await p.waitForTimeout(250);
+    if (both) { await t('touchStart', [{ x: 120, y: 460, id: 1 }, { x: 280, y: 640, id: 2 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 120, y: 460, id: 1 }, { x: 280, y: 640 - i * 60, id: 2 }]); await p.waitForTimeout(8); } }
+    await p.waitForTimeout(700); const r = { n: await p.evaluate(() => G.beams.filter(b => b.on && b.owner === G.me).length), dy: (await p.evaluate(() => G.me.y) - y0).toFixed(0) };
+    await t('touchEnd', []); await p.waitForTimeout(500); return r; };
+  res.one = await two(false); res.two = await two(true);
+  if (!(Math.abs(res.one.dy) < 10)) errs.push('una llamarada hacia adelante te movió');
+  if (!(res.two.n === 2 && res.two.dy > 15)) errs.push('la segunda llamarada hacia adelante no te impulsó: ' + JSON.stringify(res.two));
   // rival de prueba: lanza fuego, agua y aire de corrido
   await start('tierra'); await p.evaluate(() => { G.foeTest = true; G.foe.cyT = 0; });
   const kinds = new Set(); for (let i = 0; i < 40; i++) { await p.waitForTimeout(200); for (const k of await p.evaluate(() => G.beams.filter(b => b.on && b.owner === G.foe).map(b => b.k + ':' + G.foe.el))) kinds.add(k); }
