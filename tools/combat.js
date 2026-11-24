@@ -5,16 +5,24 @@ const { chromium, devices } = require('playwright');
   const b = await chromium.launch(); const p = await b.newPage({ ...devices['iPhone 13'] });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.goto('file://' + require('path').resolve(__dirname, '..', 'index.html')); await p.waitForTimeout(300);
-  await p.click('.elbtn[data-el="fuego"]');
+  await p.click('.elbtn[data-el="agua"]');
   await p.evaluate(() => { document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); });
   await p.waitForTimeout(500);
   const c = await p.context().newCDPSession(p), t = (type, pts) => c.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
-  const fire = await p.evaluate(() => { const f = arenaProps()[0], v = view(); return { x: v.ox + f.x * v.k, y: v.oy + (TOP + f.y * DEPTH - 20) * v.k }; });
-  // escudo: mantener presionada la llama
-  await t('touchStart', [{ x: fire.x, y: fire.y }]); await p.waitForTimeout(900);
+  const pool = await p.evaluate(() => { const f = arenaProps()[1], v = view(); return { x: v.ox + f.x * v.k, y: v.oy + (TOP + f.y * DEPTH) * v.k }; });
+  // escudo (sólo agua): mantener presionado el pozo
+  await t('touchStart', [{ x: pool.x, y: pool.y }]); await p.waitForTimeout(900);
   const mid = await p.evaluate(() => ({ flow: G.flow.length, shield: G.me.shield }));
   await p.waitForTimeout(1600);
   const full = await p.evaluate(() => G.me.shield);
+  await t('touchEnd', []); await p.waitForTimeout(300);
+  // fuego: mantener la llama ya no hace escudo; luego, los lanzamientos con fuego
+  await p.evaluate(() => { document.getElementById('btnBack').click(); document.querySelector('.elbtn[data-el="fuego"]').click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foeTest = false; G.foe.wait = 99; G.foe.el = 'tierra'; });
+  await p.waitForTimeout(500);
+  const fire = await p.evaluate(() => { const f = arenaProps()[0], v = view(); return { x: v.ox + f.x * v.k, y: v.oy + (TOP + f.y * DEPTH - 20) * v.k }; });
+  await t('touchStart', [{ x: fire.x, y: fire.y }]); await p.waitForTimeout(1500);
+  const fireShield = await p.evaluate(() => ({ flow: G.flow.length, shield: G.me.shield }));
+  if (fireShield.flow || fireShield.shield) errs.push('el fuego todavía hace escudo');
 
   await t('touchEnd', []); await p.waitForTimeout(300);
   // lanzar: arrastrar desde la llama hacia el rival y soltar rápido

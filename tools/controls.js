@@ -5,7 +5,7 @@ const { chromium, devices } = require('playwright');
   const b = await chromium.launch(); const p = await b.newPage({ ...devices['iPhone 13'] });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.goto('file://' + require('path').resolve(__dirname, '..', 'index.html')); await p.waitForTimeout(300);
-  await p.click('.elbtn[data-el="tierra"]');
+  await p.click('.elbtn[data-el="agua"]');
   await p.evaluate(() => { document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); });
   const c = await p.context().newCDPSession(p);
   const touch = (type, pts) => c.send('Input.dispatchTouchEvent', { type, touchPoints: pts });

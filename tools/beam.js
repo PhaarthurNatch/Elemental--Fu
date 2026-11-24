@@ -81,9 +81,10 @@ const { chromium, devices } = require('playwright');
   if (!(res.two.n === 2 && res.two.dy > 15)) errs.push('la segunda llamarada hacia adelante no te impulsó: ' + JSON.stringify(res.two));
   // rival de prueba: lanza fuego, agua y aire de corrido
   await start('tierra'); await p.evaluate(() => { G.foeTest = true; G.foe.cyT = 0; });
-  const kinds = new Set(); for (let i = 0; i < 40; i++) { await p.waitForTimeout(200); for (const k of await p.evaluate(() => G.beams.filter(b => b.on && b.owner === G.foe).map(b => b.k + ':' + G.foe.el))) kinds.add(k); }
+  await p.evaluate(() => { G.me.hp = 1e9; }); const kinds = new Set(), thrown = new Set(); for (let i = 0; i < 80; i++) { await p.waitForTimeout(200); const r = await p.evaluate(() => ({ b: G.beams.filter(b => b.on && b.owner === G.foe).map(b => b.k + ':' + G.foe.el), o: G.orbs.filter(o => o.thrown && o.owner === G.foe).map(o => o.k) })); r.b.forEach(k => kinds.add(k)); r.o.forEach(k => thrown.add(k)); if (kinds.size >= 3 && thrown.size >= 4) break; }
   res.cycle = [...kinds];
   if (!['fire:fuego', 'water:agua', 'air:aire'].every(k => kinds.has(k))) errs.push('el rival de prueba no lanzó fuego, agua y aire: ' + res.cycle);
+  res.thrown = [...thrown]; if (thrown.size < 4) errs.push('el rival de prueba no lanzó las 4 esferas: ' + res.thrown);
   // choques: el rival contesta con su ataque; los elementos chocan (vapor, agua desparramada, fuego disperso) y si están cerca los dos retroceden
   const clash = async (mine, his, kind) => {
     await start(mine);
