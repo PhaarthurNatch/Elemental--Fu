@@ -6,6 +6,7 @@ Juego de duelos para celular del dueño. Antes vivía en el repositorio `Vibe-Co
 **Respuestas breves:** al terminar un cambio, decir sólo qué se hizo, en pocas líneas (sin detallar pruebas, tablas ni el proceso), salvo que el dueño pida más detalle.
 **Pull request:** se abre sólo cuando el dueño lo pide (también si dice "main" o "pasémoslo a main"), y la respuesta es **sólo el link del pull request**. **Nunca juntarlo (merge) a main: eso lo hace sólo el dueño.**
 **Mismo sitio que Monster Brawl:** la web app está en `phaarthurnatch.github.io`, igual que Monster Brawl (otro repositorio), así que comparten el guardado del navegador y las cachés: todo lo de este juego usa el prefijo `elemental-fu` (localStorage y caché del service worker) y el service worker borra sólo sus propias cachés. No tocar nada de Monster Brawl.
+**Sin menciones a Monster Brawl en el juego** (pedido del dueño): ni en la UI ni en los comentarios del código (`index.html`, `sw.js`) ni en el README; sólo aquí en el CLAUDE.md, como referencia.
 **GitHub Pages:** se publica desde `main`, carpeta raíz (`.nojekyll`); el dueño lo activa una vez en Settings → Pages → Deploy from a branch → `main` / root.
 
 ## Cómo trabajar
