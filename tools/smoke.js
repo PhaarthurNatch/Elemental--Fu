@@ -11,6 +11,7 @@ const path = require('path');
   await page.waitForTimeout(300);
   if (out) await page.screenshot({ path: out + '/pick.png' });
   await page.click('.elbtn[data-el="fuego"]');
+  await page.evaluate(() => { G.foeTest = false; }); // sin el rival de prueba atacando (sus golpes empujan y ensucian la medición de caminar)
   if (out) await page.screenshot({ path: out + '/calib.png' });
   const tilt = (beta, gamma) => page.evaluate(([b, g]) => window.dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta: b, gamma: g })), [beta, gamma]);
   // calibrar: mantener presionado sin mover el teléfono (si se mueve, se reinicia)

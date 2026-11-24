@@ -54,6 +54,11 @@ const { chromium, devices } = require('playwright');
   await p.waitForTimeout(900); const lag2 = await p.evaluate(() => { const c = G.me.nodes[G.me.ix.upper]; return Math.max(...G.orbs.map(o => Math.abs(o.ax - c.x))); });
   res.lag = [lag1.toFixed(0), lag2.toFixed(0)];
   if (!(lag1 > 50 && lag2 < 10)) errs.push('tierra: las piedras no siguieron con retraso: ' + res.lag);
+  // alcance (pedido del dueño): tierra > agua > fuego > aire (lanzados), y en las llamaradas/chorros/ráfagas: agua > fuego > aire
+  res.range = await p.evaluate(async () => { G.orbs = []; const out = {}; for (const k of ['earth', 'water', 'fire', 'air']) { const o = newOrb(k, ARENA_W * 0.5, TOP + 20); G.orbs.push(o); launch(o, 0, 0.001, G.me); out[k] = Math.round(o.lifeS * 0.001); o.life = 0; }
+    out.beam = { water: BEAM.water.range, fire: BEAM.fire.range, air: BEAM.air.range }; return out; });
+  if (!(res.range.earth > res.range.water && res.range.water > res.range.fire && res.range.fire > res.range.air && res.range.air > 400)) errs.push('alcances fuera de orden: ' + JSON.stringify(res.range));
+  if (!(res.range.beam.water > res.range.beam.fire && res.range.beam.fire > res.range.beam.air)) errs.push('alcances de las llamaradas fuera de orden');
   console.log(res);
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();

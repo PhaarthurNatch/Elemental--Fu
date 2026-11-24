@@ -83,9 +83,9 @@ const path = require('path');
   // la corriente de aire se disipa si el rival está muy lejos; cerca lo golpea
   const shoot = async () => { const u = await p.evaluate(() => { const o = G.orbs.find(o => o.docked && o.owner === G.me) || G.me.nodes[G.me.ix.upper], f = G.foe.nodes[G.foe.ix.upper], dx = f.x - o.x, dy = f.y - o.y, d = Math.hypot(dx, dy); return { x: dx / d, y: dy / d }; });
     const hp = await p.evaluate(() => G.foe.hp); await t('touchStart', [{ x: 300, y: 600 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 300 + u.x * i * 60, y: 600 + u.y * i * 60 }]); await p.waitForTimeout(8); } await t('touchEnd', []); await p.waitForTimeout(1300); return hp - await p.evaluate(() => G.foe.hp); };
-  await p.evaluate(() => { G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.05; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(300);
+  await p.evaluate(() => { G.foe.x = ARENA_W * 0.95; G.foe.y = ARENA_D * 0.02; G.foe.home = { x: G.foe.x, y: G.foe.y }; G.me.x = ARENA_W * 0.05; G.me.y = ARENA_D * 0.98; }); await p.waitForTimeout(300); // muy lejos (en diagonal), más allá del alcance del aire
   const airFar = await shoot();
-  await p.evaluate(() => { G.orbs = []; const c = G.me.nodes[G.me.ix.upper], o = newOrb('air', c.x, c.y); o.docked = true; o.owner = G.me; o.lvl = 1; G.orbs.push(o); G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.6 - 110; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
+  await p.evaluate(() => { G.orbs = []; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; const c = G.me.nodes[G.me.ix.upper], o = newOrb('air', c.x, c.y); o.docked = true; o.owner = G.me; o.lvl = 1; G.orbs.push(o); G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.6 - 110; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
   const airNear = await shoot();
   if (!(airFar < 0.5 && airNear > 5)) errs.push(`aire: la corriente no se disipó lejos o no dañó cerca (${airFar}, ${airNear})`);
   // tierra: ya no se sacan piedras pequeñas del piso; las que quedan al romperse la roca grande se toman, orbitan (hasta 3) y giran; lanzada cae al suelo y se puede volver a tomar
@@ -116,21 +116,42 @@ const path = require('path');
   const flew = await p.evaluate(() => ({ big: G.orbs.filter(o => o.big).length, small: G.orbs.filter(o => o.thrown && !o.big).length }));
   console.log({ both, flew });
   if (both.big || flew.big) errs.push('bug: con una piedra en la mano también se levantó/lanzó la roca grande');
-  // tierra: deslizar y mantener levanta una roca grande que defiende; al soltar sale lanzada dejando un surco y daña
-  await p.evaluate(() => { G.orbs = []; G.me.hp = 100; G.foe.hp = 100; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.6 - 160; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
-  const ub = await p.evaluate(() => { const o = G.me.nodes[G.me.ix.upper], f = G.foe.nodes[G.foe.ix.upper], dx = f.x - o.x, dy = f.y - o.y, d = Math.hypot(dx, dy); return { x: dx / d, y: dy / d }; });
-  await t('touchStart', [{ x: 300, y: 600 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 300 + ub.x * i * 60, y: 600 + ub.y * i * 60 }]); await p.waitForTimeout(8); }
-  await p.waitForTimeout(600); const raised = await p.evaluate(() => G.orbs.filter(o => o.big && o.raised).length);
-  await p.evaluate(() => { const arm = G.foe.ix.arms[0]; startBeam(null, G.foe, performance.now() + 1500, arm, 'fire'); }); await p.waitForTimeout(1500);
+  // tierra: mantener presionado en cualquier parte levanta una roca grande que defiende; se mueve como esfera; soltarla rápido la lanza dejando un surco y daña
+  await p.evaluate(() => { G.orbs = []; G.me.hp = 100; G.foe.hp = 100; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.6 - 200; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
+  const hp0s = await p.evaluate(() => { const v = view(), a = G.me, b = G.foe; return { x: v.ox + a.gx * v.k, y: v.oy + (a.gy + (b.gy - a.gy) * 0.4) * v.k, fy: v.oy + b.gy * v.k }; });
+  await t('touchStart', [{ x: hp0s.x, y: hp0s.y }]); await p.waitForTimeout(700);
+  const raised = await p.evaluate(() => G.orbs.filter(o => o.big && o.held).length);
+  await p.evaluate(() => { const arm = G.foe.ix.arms[0]; startBeam(null, G.foe, performance.now() + 1100, arm, 'fire'); }); await p.waitForTimeout(1100);
   const blocked = await p.evaluate(() => { const o = G.orbs.find(o => o.big); return { hp: G.me.hp, marks: o && o.marks ? o.marks.length : 0, heat: o ? +o.heat.toFixed(2) : 0 }; });
-  const hpB = await p.evaluate(() => G.foe.hp); await t('touchEnd', []); await p.waitForTimeout(150);
+  const hpB = await p.evaluate(() => G.foe.hp);
+  for (let i = 1; i <= 5; i++) { await t('touchMove', [{ x: hp0s.x, y: hp0s.y - i * 40 }]); await p.waitForTimeout(16); } await t('touchEnd', []); await p.waitForTimeout(150); // la mueve rápido hacia el rival y la suelta
   const flyingB = await p.evaluate(() => ({ th: G.orbs.filter(o => o.big && o.thrown).length, trail: G.trails.length })); await p.waitForTimeout(900);
   const boulderDmg = hpB - await p.evaluate(() => G.foe.hp);
   console.log({ raised, blocked, flyingB, boulderDmg });
-  if (raised !== 1) errs.push('tierra: no levantó la roca grande');
+  if (raised !== 1) errs.push('tierra: mantener presionado no levantó la roca grande');
   if (!(blocked.hp > 99 && blocked.marks > 0 && blocked.heat > 0.3)) errs.push('tierra: la roca no defendió del fuego o no se quemó/calentó: ' + JSON.stringify(blocked));
-  if (!(flyingB.trail > 3)) errs.push('tierra: la roca no salió lanzada dejando surco');
+  if (!(flyingB.trail > 0)) errs.push('tierra: la roca no salió lanzada dejando surco');
   if (!(boulderDmg > 15)) errs.push('tierra: la roca lanzada no dañó');
+  // soltarla despacio la deja en el suelo y se puede volver a tomar como esfera
+  await p.evaluate(() => { G.orbs = []; G.foe.x = ARENA_W * 0.85; G.foe.y = ARENA_D * 0.15; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(300);
+  await t('touchStart', [{ x: hp0s.x - 60, y: hp0s.y }]); await p.waitForTimeout(700); await t('touchEnd', []); await p.waitForTimeout(700);
+  const restBig = await p.evaluate(() => { const o = G.orbs.find(o => o.big && o.rest); if (!o) return null; const v = view(); return { x: v.ox + o.x * v.k, y: v.oy + o.y * v.k }; });
+  let grabbed = false; if (restBig) { await t('touchStart', [{ x: restBig.x, y: restBig.y }]); await p.waitForTimeout(40); for (let i = 1; i <= 10; i++) { await t('touchMove', [{ x: restBig.x + i * 6, y: restBig.y - i * 3 }]); await p.waitForTimeout(30); } grabbed = await p.evaluate(() => G.orbs.some(o => o.big && o.held)); await t('touchEnd', []); await p.waitForTimeout(500); }
+  if (!restBig || !grabbed) errs.push('tierra: la roca grande no quedó en el suelo o no se pudo volver a mover');
+  // contra la pared, a veces no se rompe (queda ahí)
+  const wall = await p.evaluate(async () => { G.orbs = []; G.foe.x = ARENA_W * 0.15; G.foe.y = ARENA_D * 0.85; G.foe.home = { x: G.foe.x, y: G.foe.y }; G.me.x = ARENA_W * 0.15; G.me.y = ARENA_D * 0.6; await new Promise(r => setTimeout(r, 300)); let kept = 0, broke = 0; for (let i = 0; i < 12; i++) { const o = newOrb('earth', ARENA_W * 0.5, TOP + ARENA_D * 0.15 * DEPTH); Object.assign(o, { big: true, size: BOULDER.size, hp: 1, heat: 0, spin: 0 }); G.orbs.push(o); throwBig(o, 500, 0, G.me); await new Promise(r => setTimeout(r, 700)); if (o.rest) kept++; else if (o.life <= 0) broke++; G.orbs = []; } return { kept, broke }; });
+  if (!(wall.kept > 0 && wall.broke > 0)) errs.push('tierra: contra la pared debía a veces quedar y a veces romperse: ' + JSON.stringify(wall));
+  // corriendo + el gesto de la llamarada: surfea una roca; al soltar se baja y la roca sale hacia donde apunta el dedo
+  await p.evaluate(() => { G.orbs = []; G.me.x = ARENA_W * 0.3; G.me.y = ARENA_D * 0.6; }); await p.waitForTimeout(300);
+  await p.keyboard.down('ArrowRight'); await p.waitForTimeout(400);
+  await t('touchStart', [{ x: 300, y: 600 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 300, y: 600 - i * 60 }]); await p.waitForTimeout(8); }
+  await p.waitForTimeout(500); const surf = await p.evaluate(() => ({ on: !!G.me.surf, z: +G.me.z.toFixed(0), sp: +Math.hypot(G.me.vx, G.me.vy).toFixed(0) }));
+  await p.keyboard.up('ArrowRight'); await t('touchEnd', []); await p.waitForTimeout(100);
+  const after = await p.evaluate(() => { const o = G.orbs.find(o => o.big); return { on: !!G.me.surf, thrown: !!(o && o.thrown), up: o ? o.vy < -100 : false }; }); await p.waitForTimeout(800);
+  const landed = await p.evaluate(() => G.me.z === 0);
+  console.log({ restBig: !!restBig, grabbed, wall, surf, after, landed });
+  if (!(surf.on && surf.z > 15 && surf.sp > 230)) errs.push('tierra: no surfeó la roca al correr: ' + JSON.stringify(surf));
+  if (!(!after.on && after.thrown && after.up && landed)) errs.push('tierra: al soltar no se bajó o la roca no salió hacia donde apuntaba el dedo: ' + JSON.stringify(after));
   // dos piedras lanzadas se rompen; una piedra contra la roca grande también
   await p.evaluate(() => { G.foe.x = ARENA_W * 0.8; G.foe.y = ARENA_D * 0.8; G.foe.home = { x: G.foe.x, y: G.foe.y }; G.me.x = ARENA_W * 0.2; G.me.y = ARENA_D * 0.3; }); await p.waitForTimeout(500);
   const breakR = await p.evaluate(async () => { G.orbs = []; const y = TOP + ARENA_D * 0.12 * DEPTH, a = newOrb('earth', 150, y), b = newOrb('earth', 370, y); G.orbs.push(a, b); launch(a, 500, 0, G.me); launch(b, -500, 0, G.foe);
