@@ -111,7 +111,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.48'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.49'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -508,15 +508,12 @@ const cv = $('cv');
 // Arrastrar el dedo mueve ese brazo; tocar un pozo o una llama estira ese brazo hacia allá y la mano sigue al dedo; tocar sin arrastrar = saltar (más largo, más fuerte)
 const PTRS = new Map();
 let HAND = 'der'; // diestro: joystick abajo a la derecha; zurdo: abajo a la izquierda (pedido del dueño; se elige en «Controles»)
-function joyCenter() { // el joystick va abajo del lado de tu mano, corrido hacia el centro si taparía la fuente (llama o pozo) de esa esquina
-  const Rj = JOY_R, y = H - Rj - 18 - SAB, right = HAND === 'der'; let x = right ? W - Rj - 18 : Rj + 18;
-  if (scene !== 'duel') return { x, y };
-  const v = view();
-  for (const p of arenaProps().filter(p => right ? p.x > ARENA_W / 2 : p.x < ARENA_W / 2)) {
-    const cx = v.ox + p.x * v.k, gy = v.oy + (TOP + p.y * DEPTH) * v.k, hw = (p.r + 7 + 8) * v.k, top = gy - (p.k === 'fire' ? FIRE_H + p.r * 2.6 : (p.r + 7) * DEPTH) * v.k - 8, bot = gy + ((p.r + 7) * DEPTH) * v.k + 8;
-    const nx = clamp(x, cx - hw, cx + hw), ny = clamp(y, top, bot); if (Math.hypot(x - nx, y - ny) < Rj) x = right ? cx - hw - Rj : cx + hw + Rj;
-  }
-  return { x, y };
+function joyCenter() { // el joystick va justo encima de la fuente (llama o pozo) de la esquina de abajo del lado de tu mano (pedido del dueño), sin taparla
+  const Rj = JOY_R, right = HAND === 'der', fx = right ? W - Rj - 18 : Rj + 18, fy = H - Rj - 18 - SAB;
+  if (scene !== 'duel') return { x: fx, y: fy };
+  const v = view(), p = arenaProps().filter(q => right ? q.x > ARENA_W / 2 : q.x < ARENA_W / 2).sort((a, b) => b.y - a.y)[0]; if (!p) return { x: fx, y: fy };
+  const cx = v.ox + p.x * v.k, gy = v.oy + (TOP + p.y * DEPTH) * v.k, top = gy - (p.k === 'fire' ? FIRE_H + p.r * 2.6 : (p.r + 7) * DEPTH) * v.k;
+  return { x: clamp(cx, Rj + 8, W - Rj - 8), y: top - Rj - 10 };
 }
 const toWorld = (sx, sy) => { const v = view(); return { x: (sx - v.ox) / v.k, y: (sy - v.oy) / v.k }; }; // de la pantalla al dibujo de la arena
 function propAt(sx, sy) { // ¿el dedo tocó un pozo o una llama? (zona generosa, para el dedo)
@@ -638,7 +635,7 @@ function calStep(dt) {
   h.addEventListener('contextmenu', e => e.preventDefault()); }
 function fightStart() {
   G.phase = 'fight'; $('btnCal').hidden = CTL !== 'tilt'; // «Centrar» sólo inclinando
-  const walk = CTL === 'joy' ? 'Usa la palanca de abajo para caminar' : TILT.seen ? 'Inclina para caminar' : !matchMedia('(pointer: coarse)').matches ? 'Flechas para caminar' : 'No llega la inclinación: permite el acceso al movimiento o elige Joystick en Controles';
+  const walk = CTL === 'joy' ? 'Usa la palanca para caminar' : TILT.seen ? 'Inclina para caminar' : !matchMedia('(pointer: coarse)').matches ? 'Flechas para caminar' : 'No llega la inclinación: permite el acceso al movimiento o elige Joystick en Controles';
   showTip(walk, 2600); setTimeout(() => { if (G && G.phase === 'fight') showTip('Toca: la mano sigue tu dedo · Desliza rápido: ataca', 3600); }, 2900);
 }
 function duelStep(dt) {
@@ -1290,7 +1287,7 @@ function drawCount(ctx) { // 3, 2, 1, ¡PELEA! (cada número aparece grande y se
   ctx.restore();
 }
 function drawLevel(ctx, W, H) { // nivel de burbuja abajo: muestra hacia dónde estás inclinando (en el link de prueba es la palanca para caminar)
-  const r = touchWalk() ? JOY_R : 30, j = joyCenter(), x = touchWalk() ? j.x : W / 2, y = H - r - 18 - SAB; // el joystick del lado de tu mano; el nivel (inclinando) al centro
+  const r = touchWalk() ? JOY_R : 30, j = joyCenter(), x = touchWalk() ? j.x : W / 2, y = touchWalk() ? j.y : H - r - 18 - SAB; // el joystick del lado de tu mano; el nivel (inclinando) al centro
   ctx.fillStyle = 'rgba(15,20,28,.55)'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r * 0.35, 0, TAU); ctx.stroke();
   ctx.fillStyle = G.src === 'none' ? 'rgba(255,255,255,.35)' : '#ffc861'; ctx.beginPath(); ctx.arc(x + G.inp.x * r * 0.7, y + G.inp.y * r * 0.7, 7, 0, TAU); ctx.fill();
