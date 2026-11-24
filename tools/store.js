@@ -77,10 +77,17 @@ const path = require('path');
   await p.evaluate(() => { G.orbs = []; const c = G.me.nodes[G.me.ix.upper], o = newOrb('air', c.x, c.y); o.docked = true; o.owner = G.me; o.lvl = 1; G.orbs.push(o); G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.6 - 110; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
   const airNear = await shoot();
   if (!(airFar < 0.5 && airNear > 5)) errs.push(`aire: la corriente no se disipó lejos o no dañó cerca (${airFar}, ${airNear})`);
-  // tierra: piedras del suelo que orbitan (hasta 3) y giran; lanzada cae al suelo y se puede volver a tomar
+  // tierra: ya no se sacan piedras pequeñas del piso; las que quedan al romperse la roca grande se toman, orbitan (hasta 3) y giran; lanzada cae al suelo y se puede volver a tomar
   await p.evaluate(() => { document.getElementById('btnBack').click(); document.querySelector('.elbtn[data-el="tierra"]').click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foeTest = false; G.foe.wait = 99; G.foe.el = 'tierra'; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; });
   await p.waitForTimeout(600);
-  await bring(fl, 3);
+  await t('touchStart', [{ x: fl.x, y: fl.y }]); await p.waitForTimeout(60); for (let i = 1; i <= 25; i++) { await t('touchMove', [{ x: fl.x + (me3.x - fl.x) * i / 25, y: fl.y + (me3.y - fl.y) * i / 25 }]); await p.waitForTimeout(30); }
+  const pulled = await p.evaluate(() => G.orbs.length); await t('touchEnd', []); await p.waitForTimeout(300);
+  if (pulled) errs.push('tierra: todavía saca piedras pequeñas del piso');
+  // la roca grande se rompe y deja piedras pequeñas en el suelo
+  await p.evaluate(() => { const o = raiseBoulder(null, G.me, 0, null); o.rise = 1; o.x = G.me.gx - 120; breakBoulder(o); const r = newOrb('earth', G.me.gx + 110, G.me.gy - 40); r.fall = true; r.gy = G.me.gy - 20; G.orbs.push(r); }); await p.waitForTimeout(900);
+  const smalls = await p.evaluate(() => { const v = view(); return G.orbs.filter(o => o.rest && !o.big).map(o => ({ x: v.ox + o.x * v.k, y: v.oy + o.y * v.k })); });
+  if (smalls.length !== 3) errs.push('tierra: la roca grande no dejó piedras pequeñas: ' + smalls.length);
+  for (const sp of smalls) await bring(sp, 1);
   const rocks = await p.evaluate(() => { const r = G.orbs.filter(o => o.k === 'earth' && o.docked); return { n: r.length, shapes: new Set(r.map(o => o.shape.length + ':' + o.size.toFixed(2))).size, rot: r.map(o => o.rot) }; });
   await p.waitForTimeout(400); const rot2 = await p.evaluate(() => G.orbs.filter(o => o.k === 'earth' && o.docked).map(o => o.rot));
   if (!(rocks.n === 3 && rocks.shapes >= 2 && rot2.some((r, i) => Math.abs(r - rocks.rot[i]) > 0.1))) errs.push('tierra: no quedaron 3 piedras distintas orbitando y girando: ' + JSON.stringify(rocks));
@@ -89,11 +96,15 @@ const path = require('path');
   if (!(stoneDmg > 5 && onFloor)) errs.push('tierra: la piedra lanzada no dañó o no quedó en el suelo');
   if (onFloor) { await p.evaluate(() => { G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; }); await p.waitForTimeout(400); const n0 = await p.evaluate(() => G.orbs.filter(o => o.docked).length); await bring(onFloor, 1);
     const n1 = await p.evaluate(() => G.orbs.filter(o => o.docked).length); if (n1 !== n0 + 1) errs.push('tierra: no se pudo volver a tomar la piedra del suelo'); }
-  // tierra: sacar una piedra del suelo tarda (no aparece antes de ~0,6 s de arrastrar)
-  await p.evaluate(() => { G.orbs = G.orbs.filter(o => !o.rest && !o.fall); });
-  await t('touchStart', [{ x: fl.x, y: fl.y }]); await p.waitForTimeout(60); for (let i = 1; i <= 8; i++) { await t('touchMove', [{ x: fl.x + i * 4, y: fl.y - i * 3 }]); await p.waitForTimeout(40); }
-  const early2 = await p.evaluate(() => G.orbs.some(o => o.held)); await p.waitForTimeout(700); const late2 = await p.evaluate(() => G.orbs.some(o => o.held)); await t('touchEnd', []); await p.waitForTimeout(500);
-  if (early2 || !late2) errs.push(`tierra: sacar la piedra no tardó lo esperado (${early2}, ${late2})`);
+  // bug: con una piedra en la mano, deslizar rápido no debe levantar además la roca grande (un dedo, una cosa)
+  await p.evaluate(() => { G.orbs = []; const r = newOrb('earth', G.me.gx + 60, G.me.gy - 10); r.rest = true; r.gy = r.y; G.orbs.push(r); }); await p.waitForTimeout(200);
+  const rk = await p.evaluate(() => { const o = G.orbs[0], v = view(); return { x: v.ox + o.x * v.k, y: v.oy + o.y * v.k }; });
+  await t('touchStart', [{ x: rk.x, y: rk.y }]); await p.waitForTimeout(40); for (let i = 1; i <= 4; i++) { await t('touchMove', [{ x: rk.x + i * 6, y: rk.y - i * 4 }]); await p.waitForTimeout(40); }
+  for (let i = 1; i <= 4; i++) { await t('touchMove', [{ x: rk.x + 24, y: rk.y - 16 - i * 60 }]); await p.waitForTimeout(8); } await p.waitForTimeout(400);
+  const both = await p.evaluate(() => ({ big: G.orbs.filter(o => o.big).length, held: G.orbs.filter(o => o.held).length })); await t('touchEnd', []); await p.waitForTimeout(100);
+  const flew = await p.evaluate(() => ({ big: G.orbs.filter(o => o.big).length, small: G.orbs.filter(o => o.thrown && !o.big).length }));
+  console.log({ both, flew });
+  if (both.big || flew.big) errs.push('bug: con una piedra en la mano también se levantó/lanzó la roca grande');
   // tierra: deslizar y mantener levanta una roca grande que defiende; al soltar sale lanzada dejando un surco y daña
   await p.evaluate(() => { G.orbs = []; G.me.hp = 100; G.foe.hp = 100; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.6 - 160; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
   const ub = await p.evaluate(() => { const o = G.me.nodes[G.me.ix.upper], f = G.foe.nodes[G.foe.ix.upper], dx = f.x - o.x, dy = f.y - o.y, d = Math.hypot(dx, dy); return { x: dx / d, y: dy / d }; });
@@ -122,7 +133,7 @@ const path = require('path');
     await new Promise(r => setTimeout(r, 900)); return { steam, left, stone: G.orbs.filter(o => o.k === 'earth' && o.rest).length, fire: G.orbs.filter(o => o.k === 'fire').length }; });
   if (!(orbClash.steam > 3 && orbClash.left === 0)) errs.push('fuego y agua lanzados no chocaron con vapor: ' + JSON.stringify(orbClash));
   if (!(orbClash.stone === 1 && orbClash.fire === 0)) errs.push('la piedra no cayó al chocar con el fuego: ' + JSON.stringify(orbClash));
-  console.log({ ring, airFar, airNear, rocks: rocks.n, stoneDmg, orbClash });
+  console.log({ ring, airFar, airNear, smalls: smalls.length, rocks: rocks.n, stoneDmg, orbClash });
   console.log({ early, extra, docked, maxOk, fireN, still: still && still.toFixed(1), back, flying, dmg: dmg.toFixed(1) });
   if (early !== 1) errs.push('no se adosó de inmediato');
   if (extra.orbs || extra.splash) errs.push('al adosar salió otra esfera o una salpicadura: ' + JSON.stringify(extra));
