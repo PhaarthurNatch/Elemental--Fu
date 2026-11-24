@@ -65,5 +65,21 @@ const { chromium, devices } = require('playwright');
   if (!during || !(during.len > during.armLen * 1.2 && during.toFinger < during.shToFinger - during.armLen * 1.2)) errs.push('la mano no siguió al dedo estirándose: ' + JSON.stringify(during));
   if (both !== 2) errs.push('no se controlan los dos brazos a la vez');
   if (after.ctl !== 0 || Math.hypot(back.rx - before.rx, back.ry - before.ry) > 4) errs.push('el brazo no volvió');
+  // el cuerpo gira con el brazo (el brazo no se va hacia atrás); con las dos manos gira sólo hasta cierto punto; el codo queda un poco doblado
+  await p.evaluate(() => { document.querySelector('#btnBack').click(); document.querySelector('.elbtn[data-el="agua"]').click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = []; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.15; G.foe.home = { x: G.foe.x, y: G.foe.y }; });
+  await p.waitForTimeout(600);
+  const scr = (ax, ay) => p.evaluate(([ax, ay]) => { const v = view(); return { x: v.ox + (G.me.gx + ax) * v.k, y: v.oy + (G.me.gy + ay) * v.k }; }, [ax, ay]);
+  const armAngle = () => p.evaluate(() => { const m = G.me, a = m.ix.arms.find(x => x.ctl); if (!a) return null; const c = a.ctl, beta = Math.atan2(c.x - m.x, (c.y - TOP) / DEPTH - m.y), al = Math.sign(a.lat) * wrapA(beta - m.ph);
+    const N = m.nodes, sh = N[a.sh], el = N[a.el], ha = N[a.ha], dx = ha.x - sh.x, dy = ha.y - sh.y, L = Math.hypot(dx, dy) || 1, off = Math.abs((el.x - sh.x) * dy - (el.y - sh.y) * dx) / L; return { al: +(al * 180 / Math.PI).toFixed(0), elbow: +off.toFixed(1) }; });
+  const behind = await scr(10, 90); // detrás y un poco al lado
+  await touch('touchStart', [{ x: behind.x, y: behind.y, id: 7 }]); await p.waitForTimeout(1200);
+  const one = await armAngle(); await touch('touchEnd', []); await p.waitForTimeout(1200);
+  const l = await scr(40, 110), r = await scr(140, 60), ph0 = await p.evaluate(() => G.me.ph);
+  await touch('touchStart', [{ x: l.x, y: l.y, id: 8 }, { x: r.x, y: r.y, id: 9 }]); await p.waitForTimeout(1200);
+  const turn2 = await p.evaluate(ph0 => Math.abs(wrapA(G.me.ph - ph0)) * 180 / Math.PI, ph0); await touch('touchEnd', []); await p.waitForTimeout(600);
+  console.log({ one, turn2: turn2.toFixed(0) });
+  if (!one || one.al < -20 || one.al > 70) errs.push('el cuerpo no giró con el brazo (quedó hacia atrás): ' + JSON.stringify(one));
+  if (!one || one.elbow < 2) errs.push('el codo quedó completamente estirado');
+  if (!(turn2 > 25 && turn2 < 62)) errs.push('con las dos manos debía girar sólo hasta cierto punto: ' + turn2.toFixed(0));
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();
