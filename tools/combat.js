@@ -57,7 +57,7 @@ const { chromium, devices } = require('playwright');
   console.log({ mid, full: full.toFixed(2), sinEscudo: d1.toFixed(1), conEscudo: d2.toFixed(1) });
   if (!(mid.flow > 0 && full > 0.4)) errs.push('no se formó el escudo');
   if (!(d1 > 5)) errs.push('el lanzamiento no dañó');
-  if (!(d2 > 0 && d2 < d1 * 0.6)) errs.push('el escudo no redujo el daño');
+  if (!(d2 < d1 * 0.6)) errs.push('el escudo no redujo el daño'); // el escudo de agua detiene la bola de fuego (puede quedar en 0)
   // puñetazo: pegado al rival y sin esferas, deslizar rápido hacia él lo golpea con el puño (no sale llamarada)
   await p.evaluate(() => { G.orbs = []; G.beams = []; G.foe.shield = 0; G.foe.hp = 100; G.me.shield = 0; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.5 - 36; G.foe.vx = G.foe.vy = 0; }); await p.waitForTimeout(500);
   const pu = async () => { await t('touchStart', [{ x: 200, y: 640 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 200, y: 640 - i * 60 }]); await p.waitForTimeout(8); } await p.waitForTimeout(60);

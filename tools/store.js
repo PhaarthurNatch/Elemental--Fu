@@ -122,13 +122,13 @@ const path = require('path');
   await t('touchStart', [{ x: 300, y: 600 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 300 + ub.x * i * 60, y: 600 + ub.y * i * 60 }]); await p.waitForTimeout(8); }
   await p.waitForTimeout(600); const raised = await p.evaluate(() => G.orbs.filter(o => o.big && o.raised).length);
   await p.evaluate(() => { const arm = G.foe.ix.arms[0]; startBeam(null, G.foe, performance.now() + 1500, arm, 'fire'); }); await p.waitForTimeout(1500);
-  const blocked = await p.evaluate(() => { const o = G.orbs.find(o => o.big); return { hp: G.me.hp, burn: o ? o.burn : 0 }; });
+  const blocked = await p.evaluate(() => { const o = G.orbs.find(o => o.big); return { hp: G.me.hp, marks: o && o.marks ? o.marks.length : 0, heat: o ? +o.heat.toFixed(2) : 0 }; });
   const hpB = await p.evaluate(() => G.foe.hp); await t('touchEnd', []); await p.waitForTimeout(150);
   const flyingB = await p.evaluate(() => ({ th: G.orbs.filter(o => o.big && o.thrown).length, trail: G.trails.length })); await p.waitForTimeout(900);
   const boulderDmg = hpB - await p.evaluate(() => G.foe.hp);
   console.log({ raised, blocked, flyingB, boulderDmg });
   if (raised !== 1) errs.push('tierra: no levantó la roca grande');
-  if (!(blocked.hp > 99 && blocked.burn > 0.1)) errs.push('tierra: la roca no defendió del fuego o no se quemó: ' + JSON.stringify(blocked));
+  if (!(blocked.hp > 99 && blocked.marks > 0 && blocked.heat > 0.3)) errs.push('tierra: la roca no defendió del fuego o no se quemó/calentó: ' + JSON.stringify(blocked));
   if (!(flyingB.trail > 3)) errs.push('tierra: la roca no salió lanzada dejando surco');
   if (!(boulderDmg > 15)) errs.push('tierra: la roca lanzada no dañó');
   // dos piedras lanzadas se rompen; una piedra contra la roca grande también
