@@ -1,5 +1,5 @@
-// Prueba rápida: abre Duelo Elemental como iPhone 13, elige Fuego, calibra (mantener presionado), espera el conteo, inclina el teléfono (eventos simulados) y revisa que camine.
-// Uso: node duelo-elemental/tools/smoke.js [carpeta-para-capturas]
+// Prueba rápida: abre Elemental-Fu como iPhone 13, elige Fuego, calibra (mantener presionado), espera el conteo, inclina el teléfono (eventos simulados) y revisa que camine.
+// Uso: node elemental-fu/tools/smoke.js [carpeta-para-capturas]
 const { chromium, devices } = require('playwright');
 const path = require('path');
 (async () => {

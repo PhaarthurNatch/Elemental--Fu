@@ -1,6 +1,6 @@
 {
-  "name": "Duelo Elemental",
-  "short_name": "Duelo Elemental",
+  "name": "Elemental-Fu",
+  "short_name": "Elemental-Fu",
   "description": "Duelos de control de los elementos: agua, tierra, fuego y aire.",
   "lang": "es",
   "start_url": "./index.html",

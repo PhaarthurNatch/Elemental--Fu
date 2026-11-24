@@ -7,11 +7,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Duelo Elemental">
+<meta name="apple-mobile-web-app-title" content="Elemental-Fu">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/icon-192.png">
-<title>Duelo Elemental</title>
+<title>Elemental-Fu</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 :root{color-scheme:dark;--bg:#141c26;--panel:#1f2a38;--panel2:#2b3a4e;--text:#f1f4f8;--muted:#9fb0c3;--acc:#ffc861}
@@ -40,7 +40,10 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 #tip.on{opacity:1}
 /* elegir elemento */
 #pick{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);background:radial-gradient(circle at 50% 35%,#24344a,var(--bg) 72%)}
-#pick h1{margin:0;font-size:34px;letter-spacing:.5px;text-align:center}
+#pick h1{margin:0;font-size:40px;letter-spacing:.5px;text-align:center;font-weight:900;line-height:1.05}
+.logo span{-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:1.5px rgba(10,14,20,.6);filter:drop-shadow(0 3px 0 rgba(0,0,0,.45))}
+.logo .el4{background-image:linear-gradient(90deg,#4aa6ea 0 25%,#5cc266 25% 50%,#ff6a4a 50% 75%,#ffbb3a 75%)} /* los cuatro elementos */
+.logo .fu{background-image:linear-gradient(180deg,#fff3c4,#ffc861 50%,#ff6a2a);font-size:1.12em}
 #pick p{margin:0 0 8px;color:var(--muted);font-weight:700;font-size:16px}
 .elgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:380px}
 .elbtn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 6px 12px;border-radius:18px;background:var(--panel);box-shadow:0 3px 0 rgba(0,0,0,.4);border:3px solid transparent}
@@ -73,7 +76,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
   <p id="calMsg"></p>
 </div>
 <div id="pick">
-  <h1>Duelo Elemental</h1>
+  <h1 class="logo" aria-label="Elemental-Fu"><span class="el4">Elemental</span><span class="fu">-Fu</span></h1>
   <p>Elige tu elemento</p>
   <div class="elgrid" id="elGrid"></div>
 </div>
@@ -88,7 +91,7 @@ let ARENA_W = 520, ARENA_D = 600;      // suelo (unidades de arena); ARENA_D se 
 const DEPTH = 0.7;                     // compresión de profundidad (igual que Monster Brawl)
 const TOP = 130;                       // muro del fondo sobre el suelo
 const RIG_STIFF = 1.3, RIG_DAMP = 1.5; // misma física de resortes que Monster Brawl
-const SAVE_KEY = 'duelo_elemental_v1'; // (Monster Brawl usa monster_brawl_*: no se pisan)
+const SAVE_KEY = 'elemental_fu_v1'; // (Monster Brawl usa monster_brawl_*: no se pisan)
 const WALK_SPEED = 150;                // velocidad máxima caminando (unidades/s)
 const TILT_DEAD = 2.5, TILT_FULL = 20; // grados: zona muerta y grados para ir a toda velocidad
 const CAL_S = 1.5, CAL_MOVE = 6;       // calibrar: segundos manteniendo presionado y grados que se puede mover sin que se reinicie
@@ -730,7 +733,7 @@ function orbStep(dt) {
       o.vx += ((w.x - o.x) * ORB.k - o.vx * c) * dt; o.vy += ((w.y - o.y) * ORB.k - o.vy * c) * dt;
       if (p.arm && p.arm.ctl) { p.arm.ctl.x = o.x; p.arm.ctl.y = o.y; } // la mano apunta a la esfera
       const me = G.me, ch = me.nodes[me.ix.upper], near = Math.abs(o.x - me.gx) < BODY.torW * 0.6 * me.s + ORB.r * 0.6 && o.y > me.nodes[me.ix.head].y - BODY.head * 0.6 * me.s && o.y < me.gy + 2, /* la esfera toca a tu personaje */ mine = G.orbs.filter(q => q.docked && q.owner === me), wd = o.k === 'water' && mine.find(q => q.k === 'water'), full = o.k === 'water' ? wd && wd.lvl >= DOCK.max : mine.length >= DOCK.max; // fuego: hasta 3 orbitando; agua: una que crece hasta 3
-      o.dockT = near && !full ? (o.dockT || 0) + dt : Math.max(0, (o.dockT || 0) - dt * 2); // dejarla un momento en tu personaje (no es inmediato)
+      o.dockT = near && !full ? (o.dockT || 0) + dt : Math.max(0, (o.dockT || 0) - dt * 2); // dejarla un momento en tu personaje (no es inmediato; sin anillo indicador, pedido del dueño)
       if (o.dockT >= DOCK.s) {
         o.held = false; o.dockT = 0; p.orb = null; p.docked = true; if (p.arm) { p.arm.ctl = null; p.arm = null; }
         if (wd) { wd.lvl++; o.life = 0; o.merged = true; for (let i = 0; i < 12; i++) orbFx(wd, 1); } // agua: se junta con la que ya tienes y la hace más grande
@@ -798,7 +801,6 @@ function drawDuel(ctx, V) {
   for (const m of G.ms) if (m.isMe) { ctx.strokeStyle = 'rgba(255,200,97,.8)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(m.gx, m.gy, m.r * 1.4 * m.s, m.r * 0.5 * m.s, 0, 0, TAU); ctx.stroke(); } // anillo dorado: tú
   for (const q of G.dust) { ctx.fillStyle = `rgba(200,180,140,${q.life * 0.7})`; ctx.beginPath(); ctx.arc(q.x, TOP + q.y * DEPTH - q.z, q.r, 0, TAU); ctx.fill(); }
   for (const it of [...G.ms.map(m => ({ y: m.y, m })), ...props.filter(p => p.k === 'fire').map(p => ({ y: p.y, p }))].sort((a, b) => a.y - b.y)) it.m ? (G.orbs.forEach(o => { if (o.docked && o.owner === it.m && o.back) drawOrb(ctx, o, T); }), it.m.draw(ctx), G.orbs.forEach(o => { if (o.docked && o.owner === it.m && !o.back) drawOrb(ctx, o, T); }), drawShield(ctx, it.m, T)) : drawFire(ctx, it.p, T); // por profundidad (el fuego tapa o queda detrás de los personajes)
-  for (const o of G.orbs) if (o.held && o.dockT > 0.02) { const m = G.me, c = m.nodes[m.ix.upper], f = Math.min(1, o.dockT / DOCK.s); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(c.x, c.y + 4 * m.s, DOCK.r * m.s, 0, TAU); ctx.stroke(); ctx.strokeStyle = o.k === 'water' ? '#8fd3ff' : '#ffc861'; ctx.beginPath(); ctx.arc(c.x, c.y + 4 * m.s, DOCK.r * m.s, -Math.PI / 2, -Math.PI / 2 + f * TAU); ctx.stroke(); } // anillo que se llena mientras la dejas en tu personaje
   drawFlow(ctx); drawSplash(ctx); drawFx(ctx); for (const o of G.orbs) if (!o.docked) drawOrb(ctx, o, T); // el elemento que tomaste va por encima (las que orbitan, con su personaje)
   ctx.textAlign = 'center'; for (const t of G.texts) { ctx.globalAlpha = clamp(t.life * 2.5, 0, 1); ctx.font = `900 ${t.small ? 11 : 18}px system-ui, sans-serif`; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,10,30,.85)'; ctx.strokeText(t.str, t.x, t.y); ctx.fillStyle = t.col; ctx.fillText(t.str, t.x, t.y); } ctx.globalAlpha = 1;
 }

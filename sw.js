@@ -1,14 +1,14 @@
-// Service worker de Duelo Elemental: deja el juego disponible sin internet (red primero, copia guardada sin conexión).
-// Sólo toca sus propias cachés (prefijo 'duelo-elemental-'): no borra las de Monster Brawl, que comparte el mismo sitio.
+// Service worker de Elemental-Fu: deja el juego disponible sin internet (red primero, copia guardada sin conexión).
+// Sólo toca sus propias cachés (prefijo 'elemental-fu-'): no borra las de Monster Brawl, que comparte el mismo sitio.
 // Al cambiar archivos fijos (íconos), subir el número de CACHE.
-const CACHE = 'duelo-elemental-v1';
+const CACHE = 'elemental-fu-v1';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('duelo-elemental-') && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('elemental-fu-') && k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
   const req = e.request;
