@@ -5,23 +5,31 @@ const { chromium, devices } = require('playwright');
   const b = await chromium.launch(); const p = await b.newPage({ ...devices['iPhone 13'] });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.goto('file://' + require('path').resolve(__dirname, '..', 'index.html')); await p.waitForTimeout(300);
-  await p.click('.elbtn[data-el="fuego"]');
-  await p.evaluate(() => { document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; });
+  await p.click('.elbtn[data-el="agua"]');
+  await p.evaluate(() => { document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); });
   await p.waitForTimeout(500);
   const c = await p.context().newCDPSession(p), t = (type, pts) => c.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
-  const fire = await p.evaluate(() => { const f = arenaProps()[0], v = view(); return { x: v.ox + f.x * v.k, y: v.oy + (TOP + f.y * DEPTH - 20) * v.k }; });
-  // escudo: mantener presionada la llama
-  await t('touchStart', [{ x: fire.x, y: fire.y }]); await p.waitForTimeout(900);
+  const pool = await p.evaluate(() => { const f = arenaProps()[1], v = view(); return { x: v.ox + f.x * v.k, y: v.oy + (TOP + f.y * DEPTH) * v.k }; });
+  // escudo (sólo agua): mantener presionado el pozo
+  await t('touchStart', [{ x: pool.x, y: pool.y }]); await p.waitForTimeout(900);
   const mid = await p.evaluate(() => ({ flow: G.flow.length, shield: G.me.shield }));
   await p.waitForTimeout(1600);
   const full = await p.evaluate(() => G.me.shield);
+  await t('touchEnd', []); await p.waitForTimeout(300);
+  // fuego: mantener la llama ya no hace escudo; luego, los lanzamientos con fuego
+  await p.evaluate(() => { document.getElementById('btnBack').click(); document.querySelector('.elbtn[data-el="fuego"]').click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foeTest = false; G.foe.wait = 99; G.foe.el = 'tierra'; });
+  await p.waitForTimeout(500);
+  const fire = await p.evaluate(() => { const f = arenaProps()[0], v = view(); return { x: v.ox + f.x * v.k, y: v.oy + (TOP + f.y * DEPTH - 20) * v.k }; });
+  await t('touchStart', [{ x: fire.x, y: fire.y }]); await p.waitForTimeout(1500);
+  const fireShield = await p.evaluate(() => ({ flow: G.flow.length, shield: G.me.shield }));
+  if (fireShield.flow || fireShield.shield) errs.push('el fuego todavía hace escudo');
 
   await t('touchEnd', []); await p.waitForTimeout(300);
   // lanzar: arrastrar desde la llama hacia el rival y soltar rápido
   const throwAt = async () => {
     const tg = await p.evaluate(() => { const v = view(), f = G.foe; return { x: v.ox + f.gx * v.k, y: v.oy + (f.gy - 40 * f.s) * v.k }; });
     await t('touchStart', [{ x: fire.x, y: fire.y }]); await p.waitForTimeout(60);
-    { const dx = tg.x - fire.x, dy = tg.y - fire.y, d = Math.hypot(dx, dy); for (let i = 1; i <= 6; i++) { await t('touchMove', [{ x: fire.x + dx / d * 7 * i, y: fire.y + dy / d * 7 * i }]); await p.waitForTimeout(40); } } // empezar despacio = esfera
+    { const dx = tg.x - fire.x, dy = tg.y - fire.y, d = Math.hypot(dx, dy); for (let i = 1; i <= 9; i++) { await t('touchMove', [{ x: fire.x + dx / d * 5 * i, y: fire.y + dy / d * 5 * i }]); await p.waitForTimeout(40); } } // empezar despacio = esfera
     const n = 8; for (let i = 1; i <= n; i++) { await t('touchMove', [{ x: fire.x + (tg.x - fire.x) * i / n * 0.75, y: fire.y + (tg.y - fire.y) * i / n * 0.75 }]); await p.waitForTimeout(16); }
     await t('touchEnd', []);
     const hp0 = await p.evaluate(() => G.foe.hp); await p.waitForTimeout(1200); return hp0 - await p.evaluate(() => G.foe.hp);
@@ -50,5 +58,15 @@ const { chromium, devices } = require('playwright');
   if (!(mid.flow > 0 && full > 0.4)) errs.push('no se formó el escudo');
   if (!(d1 > 5)) errs.push('el lanzamiento no dañó');
   if (!(d2 > 0 && d2 < d1 * 0.6)) errs.push('el escudo no redujo el daño');
+  // puñetazo: pegado al rival y sin esferas, deslizar rápido hacia él lo golpea con el puño (no sale llamarada)
+  await p.evaluate(() => { G.orbs = []; G.beams = []; G.foe.shield = 0; G.foe.hp = 100; G.me.shield = 0; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.5 - 36; G.foe.vx = G.foe.vy = 0; }); await p.waitForTimeout(500);
+  const pu = async () => { await t('touchStart', [{ x: 200, y: 640 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 200, y: 640 - i * 60 }]); await p.waitForTimeout(8); } await p.waitForTimeout(60);
+    const r = await p.evaluate(() => ({ dmg: 100 - G.foe.hp, punch: G.me.ix.arms.some(a => a.ctl && a.ctl.punch), beam: G.beams.length })); await t('touchEnd', []); await p.waitForTimeout(400); return r; };
+  const pz = await pu();
+  await p.evaluate(() => { G.foe.hp = 100; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.25; G.foe.vx = G.foe.vy = 0; G.beams = []; }); await p.waitForTimeout(500);
+  const far = await pu();
+  console.log({ puño: pz, lejos: far });
+  if (!(pz.dmg > 3 && pz.punch && pz.beam === 0)) errs.push('pegado al rival no dio un puñetazo');
+  if (far.punch || far.dmg > 0.5 && far.beam === 0) errs.push('lejos del rival dio un puñetazo');
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();

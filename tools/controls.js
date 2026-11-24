@@ -5,8 +5,8 @@ const { chromium, devices } = require('playwright');
   const b = await chromium.launch(); const p = await b.newPage({ ...devices['iPhone 13'] });
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.goto('file://' + require('path').resolve(__dirname, '..', 'index.html')); await p.waitForTimeout(300);
-  await p.click('.elbtn[data-el="tierra"]');
-  await p.evaluate(() => { document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; });
+  await p.click('.elbtn[data-el="agua"]');
+  await p.evaluate(() => { document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); });
   const c = await p.context().newCDPSession(p);
   const touch = (type, pts) => c.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
   const maxZ = async () => p.evaluate(() => new Promise(r => { let m = 0; const t0 = performance.now(); const f = () => { m = Math.max(m, G.me.z); if (performance.now() - t0 < 1500) setTimeout(f, 16); else r(m); }; f(); }));
@@ -43,7 +43,7 @@ const { chromium, devices } = require('playwright');
   if (orbWrong) errs.push('sacó fuego sin ser de fuego');
   // como Fuego y como Agua: arrastrar desde su llama o su pozo saca el elemento, que sigue al dedo; al soltar se deshace
   for (const [el, idx] of [['fuego', 0], ['agua', 1]]) {
-    await p.evaluate(el => { document.querySelector('#btnBack').click(); document.querySelector(`.elbtn[data-el="${el}"]`).click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; }, el);
+    await p.evaluate(el => { document.querySelector('#btnBack').click(); document.querySelector(`.elbtn[data-el="${el}"]`).click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); }, el);
     await p.waitForTimeout(500);
     const pt = await p.evaluate(i => { const f = arenaProps()[i], v = view(); return { x: v.ox + f.x * v.k, y: v.oy + (TOP + f.y * DEPTH - (f.k === 'fire' ? 20 : 0)) * v.k }; }, idx);
     await touch('touchStart', [{ x: pt.x, y: pt.y, id: 5 }]); await p.waitForTimeout(100);

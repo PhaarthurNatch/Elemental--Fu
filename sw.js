@@ -1,5 +1,5 @@
 // Service worker de Elemental-Fu: deja el juego disponible sin internet (red primero, copia guardada sin conexión).
-// Sólo toca sus propias cachés (prefijo 'elemental-fu-'): no borra las de Monster Brawl, que comparte el mismo sitio.
+// Sólo toca sus propias cachés (prefijo 'elemental-fu-'): no borra las de otros juegos que comparten el mismo sitio.
 // Al cambiar archivos fijos (íconos), subir el número de CACHE.
 const CACHE = 'elemental-fu-v1';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png'];

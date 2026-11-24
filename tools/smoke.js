@@ -28,7 +28,9 @@ const path = require('path');
   await tilt(40, 0); await page.waitForFunction(() => G.phase === 'fight', null, { timeout: 8000 }).catch(async () => { console.log('estado:', await page.evaluate(() => JSON.stringify({ ph: G.phase, cd: G.cd, cal: CAL, msg: document.getElementById('calMsg').textContent }))); throw new Error('no empezó la pelea'); });
   await page.waitForTimeout(300);
   const p0 = await page.evaluate(() => ({ x: G.me.x, y: G.me.y }));
+  const st0 = await page.evaluate(() => G.me.steps);
   await tilt(40, 25); await page.waitForTimeout(900);   // inclinar a la derecha
+  const steps = await page.evaluate(st0 => G.me.steps - st0, st0);
   const p1 = await page.evaluate(() => ({ x: G.me.x, y: G.me.y }));
   if (out) await page.screenshot({ path: out + '/walk.png' });
   await tilt(20, 0); await page.waitForTimeout(900);    // inclinar hacia adelante (se aleja)
@@ -37,10 +39,11 @@ const path = require('path');
   const v = await page.evaluate(() => Math.hypot(G.me.vx, G.me.vy));
   if (out) await page.screenshot({ path: out + '/stop.png' });
   const bad = await page.evaluate(() => G.ms.some(m => m.nodes.some(n => !isFinite(n.x) || !isFinite(n.y))));
-  console.log({ p0, p1, p2, stopSpeed: v.toFixed(1) });
+  console.log({ p0, p1, p2, steps, stopSpeed: v.toFixed(1) });
   if (!(p1.x > p0.x + 40)) errs.push('no caminó a la derecha');
   if (!(p2.y < p1.y - 40)) errs.push('no caminó hacia el fondo');
   if (v > 5) errs.push('no se detuvo');
+  if (!(steps >= 4)) errs.push('no dio pasos al caminar: ' + steps);
   if (bad) errs.push('posición inválida');
   console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'no errors');
   await browser.close(); process.exit(errs.length ? 1 : 0);
