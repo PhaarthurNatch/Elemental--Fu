@@ -65,5 +65,47 @@ const { chromium, devices } = require('playwright');
   if (!during || !(during.len > during.armLen * 1.2 && during.toFinger < during.shToFinger - during.armLen * 1.2)) errs.push('la mano no siguió al dedo estirándose: ' + JSON.stringify(during));
   if (both !== 2) errs.push('no se controlan los dos brazos a la vez');
   if (after.ctl !== 0 || Math.hypot(back.rx - before.rx, back.ry - before.ry) > 4) errs.push('el brazo no volvió');
+  // el cuerpo gira con el brazo (el brazo no se va hacia atrás); con las dos manos gira sólo hasta cierto punto; el codo queda un poco doblado
+  await p.evaluate(() => { document.querySelector('#btnBack').click(); document.querySelector('.elbtn[data-el="agua"]').click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = []; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.15; G.foe.home = { x: G.foe.x, y: G.foe.y }; });
+  await p.waitForTimeout(600);
+  const scr = (ax, ay) => p.evaluate(([ax, ay]) => { const v = view(); return { x: v.ox + (G.me.gx + ax) * v.k, y: v.oy + (G.me.gy + ay) * v.k }; }, [ax, ay]);
+  const armAngle = () => p.evaluate(() => { const m = G.me, a = m.ix.arms.find(x => x.ctl); if (!a) return null; const c = a.ctl, beta = Math.atan2(c.x - m.x, (c.y - TOP) / DEPTH - m.y), al = Math.sign(a.lat) * wrapA(beta - m.ph);
+    const N = m.nodes, sh = N[a.sh], el = N[a.el], ha = N[a.ha], dx = ha.x - sh.x, dy = ha.y - sh.y, L = Math.hypot(dx, dy) || 1, off = Math.abs((el.x - sh.x) * dy - (el.y - sh.y) * dx) / L; return { al: +(al * 180 / Math.PI).toFixed(0), elbow: +off.toFixed(1) }; });
+  const behind = await scr(10, 90); // detrás y un poco al lado
+  await touch('touchStart', [{ x: behind.x, y: behind.y, id: 7 }]); await p.waitForTimeout(1200);
+  const one = await armAngle(); await touch('touchEnd', []); await p.waitForTimeout(1200);
+  const l = await scr(40, 110), r = await scr(140, 60), ph0 = await p.evaluate(() => G.me.ph);
+  await touch('touchStart', [{ x: l.x, y: l.y, id: 8 }, { x: r.x, y: r.y, id: 9 }]); await p.waitForTimeout(1200);
+  const turn2 = await p.evaluate(ph0 => Math.abs(wrapA(G.me.ph - ph0)) * 180 / Math.PI, ph0); await touch('touchEnd', []); await p.waitForTimeout(600);
+  console.log({ one, turn2: turn2.toFixed(0) });
+  if (!one || one.al < -20 || one.al > 70) errs.push('el cuerpo no giró con el brazo (quedó hacia atrás): ' + JSON.stringify(one));
+  if (!one || one.elbow < 2) errs.push('el codo quedó completamente estirado');
+  if (!(turn2 > 25 && turn2 < 62)) errs.push('con las dos manos debía girar sólo hasta cierto punto: ' + turn2.toFixed(0));
+  // opción de controles: elegir Joystick (se guarda); sin calibrar, y la palanca de abajo hace caminar
+  await p.evaluate(() => document.querySelector('#btnBack').click()); await p.waitForTimeout(200);
+  await p.click('#ctlBtn'); await p.click('.ctlopt[data-ctl="joy"]'); const label = await p.textContent('#ctlBtn'); await p.click('#ctlDone');
+  const saved = await p.evaluate(() => load().ctl);
+  await p.click('.elbtn[data-el="fuego"]'); await p.waitForTimeout(200);
+  const calib = await p.evaluate(() => ({ phase: G.phase, hidden: document.getElementById('calib').hidden }));
+  await p.waitForFunction(() => G.phase === 'fight', null, { timeout: 8000 });
+  await p.evaluate(() => { G.foeTest = false; G.foe.wait = 99; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; }); await p.waitForTimeout(300);
+  const j = await p.evaluate(() => joyCenter()), x0 = await p.evaluate(() => G.me.x);
+  await touch('touchStart', [{ x: j.x, y: j.y, id: 11 }]); await p.waitForTimeout(40); for (let i = 1; i <= 5; i++) { await touch('touchMove', [{ x: j.x + i * 10, y: j.y, id: 11 }]); await p.waitForTimeout(30); }
+  await p.waitForTimeout(700); const x1 = await p.evaluate(() => G.me.x); await touch('touchEnd', []);
+  console.log({ label, saved, calib, joyMoved: (x1 - x0).toFixed(0) });
+  if (saved !== 'joy' || !/Joystick/.test(label)) errs.push('no se guardó la opción de Joystick');
+  if (calib.phase !== 'count' || !calib.hidden) errs.push('con joystick todavía pide calibrar');
+  if (!(x1 - x0 > 40)) errs.push('el joystick no hizo caminar');
+  // diestro / zurdo: el joystick va abajo a la derecha / izquierda sin tapar las fuentes de esa esquina
+  const side = async hand => p.evaluate(hand => { HAND = hand; const j = joyCenter(), v = view(); let over = false;
+    for (const q of arenaProps()) { const cx = v.ox + q.x * v.k, gy = v.oy + (TOP + q.y * DEPTH) * v.k, hw = (q.r + 7) * v.k, top = gy - (q.k === 'fire' ? FIRE_H + q.r * 2.6 : (q.r + 7) * DEPTH) * v.k, bot = gy + (q.r + 7) * DEPTH * v.k; if (Math.hypot(j.x - clamp(j.x, cx - hw, cx + hw), j.y - clamp(j.y, top, bot)) < JOY_R) over = true; }
+    const src = arenaProps().filter(q => hand === 'izq' ? q.x > ARENA_W / 2 : q.x < ARENA_W / 2).sort((a, b) => b.y - a.y)[0], sx = v.ox + src.x * v.k, sy = v.oy + (TOP + src.y * DEPTH) * v.k;
+    return { x: Math.round(j.x), W, over, above: j.y < sy && Math.abs(j.x - sx) < JOY_R }; }, hand); // encima de la fuente de ese lado
+  const der = await side('der'), izq = await side('izq');
+  console.log({ der, izq });
+  if (!(der.x < der.W / 2 && izq.x > izq.W / 2)) errs.push('el joystick no quedó del lado correcto (diestro: izquierda, zurdo: derecha)');
+  if (der.over || izq.over) errs.push('el joystick tapa una fuente');
+  if (!der.above || !izq.above) errs.push('el joystick no quedó encima de la fuente de su lado');
+  await p.evaluate(() => { HAND = 'der'; const st = load(); delete st.ctl; delete st.hand; save(st); });
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();

@@ -45,6 +45,22 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .logo .el4{background-image:linear-gradient(90deg,#4aa6ea 0 25%,#5cc266 25% 50%,#ff6a4a 50% 75%,#ffbb3a 75%)} /* los cuatro elementos */
 .logo .fu{background-image:linear-gradient(180deg,#fff3c4,#ffc861 50%,#ff6a2a);font-size:1.12em}
 #ver{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:0;right:0;text-align:center;color:var(--muted);font-weight:800;font-size:13px;letter-spacing:.5px;opacity:.85}
+#ctlBtn{margin-top:6px;height:44px;padding:0 18px;border-radius:14px;background:var(--panel);font-weight:800;font-size:15px;box-shadow:0 3px 0 rgba(0,0,0,.4)}
+#ctlBtn:active{transform:translateY(2px)}
+#ctlPanel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(12,17,24,.78);z-index:5}
+#ctlPanel .box{width:100%;max-width:360px;background:var(--panel);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 4px 0 rgba(0,0,0,.45)}
+#ctlPanel h2{margin:0 0 4px;font-size:22px;text-align:center}
+.ctlopt{display:flex;align-items:center;gap:12px;text-align:left;padding:12px;border-radius:14px;background:var(--panel2);border:3px solid transparent}
+.ctlopt.on{border-color:var(--acc)}
+.ctlopt .ic{font-size:28px;flex:none}
+.ctlopt b{display:block;font-size:16px}
+.ctlopt small{display:block;color:var(--muted);font-weight:600;font-size:13px;margin-top:2px}
+.handrow{display:flex;align-items:center;gap:8px;margin-top:4px}
+.handrow span{font-weight:800;margin-right:4px}
+.handopt{flex:1;height:42px;border-radius:12px;background:var(--panel2);font-weight:800;border:3px solid transparent}
+.handopt.on{border-color:var(--acc)}
+.handnote{color:var(--muted);font-weight:600;font-size:12px;text-align:center}
+#ctlDone{height:44px;border-radius:14px;background:var(--acc);color:#1b1407;font-weight:900;font-size:16px;margin-top:4px}
 #pick p{margin:0 0 8px;color:var(--muted);font-weight:700;font-size:16px}
 .elgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:380px}
 .elbtn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 6px 12px;border-radius:18px;background:var(--panel);box-shadow:0 3px 0 rgba(0,0,0,.4);border:3px solid transparent}
@@ -76,15 +92,26 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
   <button id="calHold"><span>Mantén<br>presionado</span></button>
   <p id="calMsg"></p>
 </div>
+<div id="ctlPanel" hidden>
+  <div class="box">
+    <h2>Controles</h2>
+    <button class="ctlopt" data-ctl="tilt"><span class="ic">📱</span><span><b>Inclinar el teléfono</b><small>Caminas inclinándolo, como una bolita. Antes de pelear se calibra el sensor.</small></span></button>
+    <button class="ctlopt" data-ctl="joy"><span class="ic">🕹️</span><span><b>Joystick</b><small>Caminas con la palanca de abajo, arrastrando el dedo.</small></span></button>
+    <div class="handrow"><span>Mano</span><button class="handopt" data-hand="der">✋ Diestro</button><button class="handopt" data-hand="izq">🤚 Zurdo</button></div>
+    <small class="handnote">El joystick va a la izquierda (diestro) o a la derecha (zurdo), encima de la fuente de ese lado.</small>
+    <button id="ctlDone">Listo</button>
+  </div>
+</div>
 <div id="pick">
   <div id="ver"></div>
   <h1 class="logo" aria-label="Elemental-Fu"><span class="el4">Elemental</span><span class="fu">-Fu</span></h1>
   <p>Elige tu elemento</p>
   <div class="elgrid" id="elGrid"></div>
+  <button id="ctlBtn">🎮 Controles</button>
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.45'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.50'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -150,6 +177,7 @@ const BEAM = { flick: 0.18, burst: 0.35, dur: 2.2, regen: 0.3, minBreath: 0.12, 
   fire: { rate: 70, dmg: 0.4, kb: 0.08, spread: 0.17, thrust: 900, range: 330 }, air: { rate: 45, dmg: 0.25, kb: 0.55, spread: 0.2, thrust: 1700, range: 270 }, water: { rate: 50, dmg: 0.22, kb: 0.25, spread: 0.08, range: 400 } }; // alcance: agua > fuego > aire // kb: cuánto empuja al golpear (aire > agua > fuego, pedido del dueño); thrust: cuánto te impulsa disparar hacia los lados o atrás (aire > fuego) // soltar antes de `flick` s = dispara la esfera guardada (o una llamarada/ráfaga corta de `burst` s); duración con todo el aliento, recuperación por segundo, alcance máximo, vida de cada llama, cada cuánto se aplica el daño, nivel de burbuja que gasta el agua por segundo
 // Puñetazo (pedido del dueño): pegado al rival y sin esferas guardadas, el mismo deslizamiento rápido hacia él es un golpe de puño
 const PUNCH = { near: 64, ang: 1.2, dmg: 6, kb: 0.55, cd: 0.18, t: 0.22, ext: 1.7, lunge: 90 }; // distancia (arena) para estar "al lado", ángulo máximo respecto de hacia el rival (~70°), daño, empujón, espera mínima entre golpes, cuánto dura el brazo estirado, largo del brazo estirado, impulso hacia el rival
+const ARM_NAT = 30 * Math.PI / 180, TWO_HANDS_MAX = 55 * Math.PI / 180, ELBOW_MIN = 0.3; // el cuerpo gira con el brazo para que apunte hacia adelante y un poco afuera (pedido del dueño); con las dos manos ocupadas gira sólo hasta este ángulo; el codo nunca queda del todo estirado
 const ARM_RANGE = [-15 * Math.PI / 180, 85 * Math.PI / 180]; // rango cómodo de cada brazo (desde un poco cruzado por delante hasta un poco detrás del costado); fuera de él, el cuerpo gira
 const REACH_BEND = 0.8; // al apuntar a un pozo, una llama o el elemento, la mano llega a este largo del brazo: el codo queda flectado (hacia atrás)
 const LIMB = { k: 2.6, z: 0.55, mn: 0.9, mx: 1.06 }; // extremidades más rígidas (pedido del dueño): resortes más firmes y frenados, y los huesos casi no cambian de largo     // qué tan rápido gira para mirar al otro (transición gradual)
@@ -238,7 +266,7 @@ class Fighter {
       if (a.ctl) { // brazo controlado con el dedo: la mano sigue al dedo (se estira si hace falta) y el codo se dobla hacia afuera
         const sh = N[a.sh], L = (BODY.armU + BODY.armF) * s; let dx = a.ctl.abs ? a.ctl.x - sh.x : a.ctl.rx + a.ctl.dx, dy = a.ctl.abs ? a.ctl.y - sh.y : a.ctl.ry + a.ctl.dy; const d = Math.hypot(dx, dy) || 1e-3, mxR = L * (a.ctl.punch ? PUNCH.ext : a.ctl.reach ? ARM_MAX : a.ctl.abs ? REACH_BEND : ARM_MAX); if (d > mxR) { dx *= mxR / d; dy *= mxR / d; } // abs: la mano apunta a tu dedo (al tocar un pozo o una llama), sin estirarse, con el codo flectado
         ha.useT = true; ha.tx = sh.x + dx; ha.ty = sh.y + dy; ha.boost = 3; ha.stretch = el.stretch = a.ctl.punch ? PUNCH.ext * 1.1 : a.ctl.reach || !a.ctl.abs ? ARM_MAX * 1.15 : 0; // reach: la mano se estira hacia tu dedo
-        const dd = Math.min(d, mxR), l1 = el.len * s, l2 = ha.len * s, al = dd > 1e-3 ? (l1 * l1 - l2 * l2 + dd * dd) / (2 * dd) : 0, bend = Math.sqrt(Math.max(0, l1 * l1 - al * al)); const dl = Math.hypot(dx, dy) || 1e-3; let px = -dy / dl, py = dx / dl; // codo con el largo real de brazo y antebrazo
+        let dd = Math.min(d, mxR), l1 = el.len * s, l2 = ha.len * s, al = dd > 1e-3 ? (l1 * l1 - l2 * l2 + dd * dd) / (2 * dd) : 0, bend = Math.sqrt(Math.max(0, l1 * l1 - al * al)); const dl = Math.hypot(dx, dy) || 1e-3; let px = -dy / dl, py = dx / dl; if (!a.ctl.punch) bend = Math.max(bend, l1 * ELBOW_MIN); // codo con el largo real de brazo y antebrazo; siempre un poco doblado hacia afuera (pedido del dueño), salvo el puñetazo
         ha.free = el.free = true; // sin la regla que lo devuelve a su lado de siempre (si no, al apuntar hacia arriba el codo volvía hacia abajo)
         if (a.ctl.abs) { const out = Math.sign(sh.x - N[I.upper].x) || a.sd, bx = -Math.sin(this.ph) + out * 0.9, by = -Math.cos(this.ph) * DEPTH + 0.05; if (px * bx + py * by < 0) { px = -px; py = -py; } } // apuntando: el codo se flecta hacia atrás del personaje y hacia afuera (pedido del dueño: al apuntar hacia adelante se doblaba hacia adentro)
         else { const out = Math.sign(sh.x - N[I.upper].x) || a.sd; if (px * out + py * 0.4 < 0) { px = -px; py = -py; } } // arrastrando: hacia afuera
@@ -471,14 +499,22 @@ function tiltVec() {
 }
 const TOUCH = { id: null, x0: 0, y0: 0, x: 0, y: 0 };
 const IN_FRAME = (() => { try { return window.top !== window; } catch (e) { return true; } })();
-const TOUCH_WALK = IN_FRAME; // caminar con el dedo sólo en el link de prueba (ahí no llega la inclinación); en la web app se camina sólo inclinando (pedido del dueño)
+let CTL = 'tilt'; // controles (pedido del dueño): 'tilt' = inclinar el teléfono, 'joy' = joystick (palanca abajo al centro); se elige en «Controles» y se guarda; en el link de prueba (donde no llega la inclinación) parte en joystick
+const touchWalk = () => CTL === 'joy';
 const KEYS = new Set();
 addEventListener('keydown', e => KEYS.add(e.key.toLowerCase())); addEventListener('keyup', e => KEYS.delete(e.key.toLowerCase()));
 const cv = $('cv');
 // Toques en la pelea (pedido del dueño): el brazo que se usa depende de dónde está tu dedo respecto del personaje (el que se ve de ese lado; si está ocupado, el otro).
 // Arrastrar el dedo mueve ese brazo; tocar un pozo o una llama estira ese brazo hacia allá y la mano sigue al dedo; tocar sin arrastrar = saltar (más largo, más fuerte)
 const PTRS = new Map();
-const joyCenter = () => ({ x: W / 2, y: H - JOY_R - 18 - SAB }); // abajo al centro (en las esquinas están el fuego y el pozo)
+let HAND = 'der'; // diestro: joystick a la izquierda; zurdo: a la derecha (pedido del dueño: la mano que camina es la otra; se elige en «Controles»)
+function joyCenter() { // el joystick va justo encima de la fuente (llama o pozo) de la esquina de abajo del lado de tu mano (pedido del dueño), sin taparla
+  const Rj = JOY_R, right = HAND === 'izq', fx = right ? W - Rj - 18 : Rj + 18, fy = H - Rj - 18 - SAB;
+  if (scene !== 'duel') return { x: fx, y: fy };
+  const v = view(), p = arenaProps().filter(q => right ? q.x > ARENA_W / 2 : q.x < ARENA_W / 2).sort((a, b) => b.y - a.y)[0]; if (!p) return { x: fx, y: fy };
+  const cx = v.ox + p.x * v.k, gy = v.oy + (TOP + p.y * DEPTH) * v.k, top = gy - (p.k === 'fire' ? FIRE_H + p.r * 2.6 : (p.r + 7) * DEPTH) * v.k;
+  return { x: clamp(cx, Rj + 8, W - Rj - 8), y: top - Rj - 40 }; // un poco más arriba
+}
 const toWorld = (sx, sy) => { const v = view(); return { x: (sx - v.ox) / v.k, y: (sy - v.oy) / v.k }; }; // de la pantalla al dibujo de la arena
 function propAt(sx, sy) { // ¿el dedo tocó un pozo o una llama? (zona generosa, para el dedo)
   const w = toWorld(sx, sy), ay = (w.y - TOP) / DEPTH, M = 16;
@@ -494,7 +530,7 @@ cv.addEventListener('pointerdown', e => {
   if (scene !== 'duel' || !G || G.phase !== 'fight') return;
   try { cv.setPointerCapture(e.pointerId); } catch (_) { }
   const j = joyCenter();
-  if (TOUCH_WALK && TOUCH.id == null && Math.hypot(e.clientX - j.x, e.clientY - j.y) < JOY_R * 1.4) { TOUCH.id = e.pointerId; TOUCH.x0 = j.x; TOUCH.y0 = j.y; TOUCH.x = e.clientX; TOUCH.y = e.clientY; return; } // palanca para caminar (link de prueba)
+  if (touchWalk() && TOUCH.id == null && Math.hypot(e.clientX - j.x, e.clientY - j.y) < JOY_R * 1.4) { TOUCH.id = e.pointerId; TOUCH.x0 = j.x; TOUCH.y0 = j.y; TOUCH.x = e.clientX; TOUCH.y = e.clientY; return; } // palanca para caminar (link de prueba)
   if (PTRS.size >= 2) return;
   const p = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: performance.now(), moved: false, arm: null, prop: -1 };
   const pi = G.me.el === 'aire' ? -1 : propAt(e.clientX, e.clientY); // el aire no usa pozos ni llamas
@@ -551,7 +587,7 @@ function readInput() {
   if (TOUCH.id != null) { let x = (TOUCH.x - TOUCH.x0) / JOY_R, y = (TOUCH.y - TOUCH.y0) / JOY_R; const L = Math.hypot(x, y); if (L > 1) { x /= L; y /= L; } return { x, y, src: 'touch' }; }
   let kx = 0, ky = 0; if (KEYS.has('arrowleft') || KEYS.has('a')) kx--; if (KEYS.has('arrowright') || KEYS.has('d')) kx++; if (KEYS.has('arrowup') || KEYS.has('w')) ky--; if (KEYS.has('arrowdown') || KEYS.has('s')) ky++;
   if (kx || ky) { const L = Math.hypot(kx, ky); return { x: kx / L, y: ky / L, src: 'keys' }; }
-  const t = tiltVec(); if (t) return { ...t, src: 'tilt' };
+  const t = CTL === 'tilt' ? tiltVec() : null; if (t) return { ...t, src: 'tilt' }; // con joystick no se usa la inclinación
   return { x: 0, y: 0, src: 'none' };
 }
 
@@ -573,7 +609,8 @@ function startDuel(el) {
   me.ph = me.phT = Math.atan2(foe.x - me.x, foe.y - me.y); foe.ph = foe.phT = Math.atan2(me.x - foe.x, me.y - foe.y); me.guard = me.guardK = foe.guard = foe.guardK = 1;
   layout(); for (const m of G.ms) { place(m); m.resetRig(); for (let i = 0; i < 30; i++) m.step(1 / 60); }
   if (foe.el === 'agua' && !G.foeTest) giveBubble(foe, 2); // el rival de agua parte con su burbuja (para su chorro)
-  G.phase = 'calib'; TILT.ref = null; calReset(''); $('calib').hidden = false; // antes del conteo hay que calibrar el sensor (pedido del dueño)
+  if (CTL === 'tilt') { G.phase = 'calib'; TILT.ref = null; calReset(''); $('calib').hidden = false; } // antes del conteo hay que calibrar el sensor (pedido del dueño)
+  else { G.phase = 'count'; G.cd = COUNT_S + GO_S; $('calib').hidden = true; } // con joystick no hace falta calibrar
 }
 // ----- calibrar: mantener presionado sin mover el teléfono; el promedio de lo leído queda como neutro -----
 const CAL = { on: false, t: 0, n: 0, b: 0, g: 0, first: null };
@@ -597,9 +634,9 @@ function calStep(dt) {
   h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
   h.addEventListener('contextmenu', e => e.preventDefault()); }
 function fightStart() {
-  G.phase = 'fight'; $('btnCal').hidden = false;
-  const walk = TILT.seen ? 'Inclina para caminar' : !matchMedia('(pointer: coarse)').matches ? 'Flechas para caminar' : TOUCH_WALK ? 'Círculo para caminar' : 'No llega la inclinación: permite el acceso al movimiento';
-  showTip(walk, 2600); setTimeout(() => { if (G && G.phase === 'fight') showTip('Toca: saltar · Arrastra: brazos · Mantén tu pozo o llama: escudo', 3600); }, 2900);
+  G.phase = 'fight'; $('btnCal').hidden = CTL !== 'tilt'; // «Centrar» sólo inclinando
+  const walk = CTL === 'joy' ? 'Usa la palanca para caminar' : TILT.seen ? 'Inclina para caminar' : !matchMedia('(pointer: coarse)').matches ? 'Flechas para caminar' : 'No llega la inclinación: permite el acceso al movimiento o elige Joystick en Controles';
+  showTip(walk, 2600); setTimeout(() => { if (G && G.phase === 'fight') showTip('Toca: la mano sigue tu dedo · Desliza rápido: ataca', 3600); }, 2900);
 }
 function duelStep(dt) {
   const { me, foe } = G;
@@ -639,18 +676,16 @@ function duelStep(dt) {
   if (G.phase === 'ko' && (G.koT -= dt) <= 0) newRound();
 }
 const wrapA = a => ((a + Math.PI) % TAU + TAU) % TAU - Math.PI;
-function touchTurn(m, base) { // si un brazo que controlas tendría que ir muy hacia atrás o cruzar por delante, el cuerpo gira lo justo (pedido del dueño)
+function touchTurn(m, base) { // el cuerpo siempre gira junto con el brazo que controlas, para que los brazos no se vayan hacia atrás (pedido del dueño)
   const ds = [];
   for (const a of m.ix.arms) {
     const c = a.ctl; if (!c) continue;
-    const ax = c.abs ? c.x - m.x : c.rx + c.dx, ay = c.abs ? (c.y - TOP) / DEPTH - m.y : 0; // apuntando: la dirección real en el suelo; arrastrando: sólo izquierda/derecha
+    const ax = c.abs ? c.x - m.x : c.rx + c.dx, ay = c.abs ? (c.y - TOP) / DEPTH - m.y : 0; // la dirección real en el suelo
     if (Math.hypot(ax, ay) < 6) continue;
-    const sg = Math.sign(a.lat), beta = wrapA(Math.atan2(ax, ay) - base), al = sg * beta;
-    if (al >= ARM_RANGE[0] && al <= ARM_RANGE[1]) continue;
-    const d1 = wrapA(beta - sg * ARM_RANGE[0]), d2 = wrapA(beta - sg * ARM_RANGE[1]); ds.push(Math.abs(d1) < Math.abs(d2) ? d1 : d2);
+    const sg = Math.sign(a.lat), beta = wrapA(Math.atan2(ax, ay) - base); ds.push(wrapA(beta - sg * ARM_NAT)); // gira hasta que el brazo quede hacia adelante y un poco afuera
   }
   if (!ds.length) return 0; if (ds.length === 1) return ds[0];
-  return Math.sign(ds[0]) === Math.sign(ds[1]) ? (Math.abs(ds[0]) > Math.abs(ds[1]) ? ds[0] : ds[1]) : (ds[0] + ds[1]) / 2;
+  return clamp((ds[0] + ds[1]) / 2, -TWO_HANDS_MAX, TWO_HANDS_MAX); // las dos manos: el término medio, y sólo hasta cierto punto
 }
 function propTop(pr) { return { x: pr.x, y: TOP + pr.y * DEPTH - (pr.k === 'water' ? 6 : pr.k === 'air' ? 4 : FIRE_H + pr.r * 0.8) }; }
 const srcOf = p => p.prop >= 0 ? arenaProps()[p.prop] : null; // de dónde sacas el elemento: el pozo o la llama que tocaste
@@ -1252,7 +1287,7 @@ function drawCount(ctx) { // 3, 2, 1, ¡PELEA! (cada número aparece grande y se
   ctx.restore();
 }
 function drawLevel(ctx, W, H) { // nivel de burbuja abajo: muestra hacia dónde estás inclinando (en el link de prueba es la palanca para caminar)
-  const r = TOUCH_WALK ? JOY_R : 30, x = W / 2, y = H - r - 18 - SAB;
+  const r = touchWalk() ? JOY_R : 30, j = joyCenter(), x = touchWalk() ? j.x : W / 2, y = touchWalk() ? j.y : H - r - 18 - SAB; // el joystick del lado de tu mano; el nivel (inclinando) al centro
   ctx.fillStyle = 'rgba(15,20,28,.55)'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r * 0.35, 0, TAU); ctx.stroke();
   ctx.fillStyle = G.src === 'none' ? 'rgba(255,255,255,.35)' : '#ffc861'; ctx.beginPath(); ctx.arc(x + G.inp.x * r * 0.7, y + G.inp.y * r * 0.7, 7, 0, TAU); ctx.fill();
@@ -1307,7 +1342,7 @@ function buildPick() {
     x.fillStyle = 'rgba(0,0,0,.25)'; x.beginPath(); x.ellipse(110, 196, 44, 13, 0, 0, TAU); x.fill(); m.draw(x);
     b.addEventListener('click', () => {
       // iPhone: pedir permiso para leer la inclinación (tiene que ser justo al tocar)
-      try { if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().catch(() => { }); } catch (e) { }
+      try { if (CTL === 'tilt' && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().catch(() => { }); } catch (e) { } // sólo si se camina inclinando
       startDuel(b.dataset.el);
     });
   }
@@ -1316,6 +1351,13 @@ $('btnBack').addEventListener('click', () => { clearTouches(); scene = 'pick'; G
 $('btnCal').addEventListener('click', () => { centerTilt(); showTip('Centrado', 1200); });
 
 $('ver').textContent = 'Versión ' + VERSION;
+CTL = load().ctl || (IN_FRAME ? 'joy' : 'tilt'); HAND = load().hand || 'der';
+function showCtl() { for (const b of document.querySelectorAll('.ctlopt')) b.classList.toggle('on', b.dataset.ctl === CTL); for (const b of document.querySelectorAll('.handopt')) b.classList.toggle('on', b.dataset.hand === HAND); $('ctlBtn').textContent = '🎮 Controles: ' + (CTL === 'joy' ? 'Joystick · ' + (HAND === 'der' ? 'Diestro' : 'Zurdo') : 'Inclinar'); }
+showCtl();
+$('ctlBtn').addEventListener('click', () => { showCtl(); $('ctlPanel').hidden = false; });
+for (const b of document.querySelectorAll('.ctlopt')) b.addEventListener('click', () => { CTL = b.dataset.ctl; const st = load(); st.ctl = CTL; save(st); showCtl(); });
+for (const b of document.querySelectorAll('.handopt')) b.addEventListener('click', () => { HAND = b.dataset.hand; const st = load(); st.hand = HAND; save(st); showCtl(); });
+$('ctlDone').addEventListener('click', () => { $('ctlPanel').hidden = true; });
 layout(); buildPick(); loop();
 if ('serviceWorker' in navigator && location.protocol === 'https:' && window.top === window) navigator.serviceWorker.register('sw.js').catch(() => { });
 </script>
