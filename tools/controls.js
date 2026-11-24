@@ -99,11 +99,11 @@ const { chromium, devices } = require('playwright');
   // diestro / zurdo: el joystick va abajo a la derecha / izquierda sin tapar las fuentes de esa esquina
   const side = async hand => p.evaluate(hand => { HAND = hand; const j = joyCenter(), v = view(); let over = false;
     for (const q of arenaProps()) { const cx = v.ox + q.x * v.k, gy = v.oy + (TOP + q.y * DEPTH) * v.k, hw = (q.r + 7) * v.k, top = gy - (q.k === 'fire' ? FIRE_H + q.r * 2.6 : (q.r + 7) * DEPTH) * v.k, bot = gy + (q.r + 7) * DEPTH * v.k; if (Math.hypot(j.x - clamp(j.x, cx - hw, cx + hw), j.y - clamp(j.y, top, bot)) < JOY_R) over = true; }
-    const src = arenaProps().filter(q => hand === 'der' ? q.x > ARENA_W / 2 : q.x < ARENA_W / 2).sort((a, b) => b.y - a.y)[0], sx = v.ox + src.x * v.k, sy = v.oy + (TOP + src.y * DEPTH) * v.k;
+    const src = arenaProps().filter(q => hand === 'izq' ? q.x > ARENA_W / 2 : q.x < ARENA_W / 2).sort((a, b) => b.y - a.y)[0], sx = v.ox + src.x * v.k, sy = v.oy + (TOP + src.y * DEPTH) * v.k;
     return { x: Math.round(j.x), W, over, above: j.y < sy && Math.abs(j.x - sx) < JOY_R }; }, hand); // encima de la fuente de ese lado
   const der = await side('der'), izq = await side('izq');
   console.log({ der, izq });
-  if (!(der.x > der.W / 2 && izq.x < izq.W / 2)) errs.push('el joystick no quedó del lado de la mano');
+  if (!(der.x < der.W / 2 && izq.x > izq.W / 2)) errs.push('el joystick no quedó del lado correcto (diestro: izquierda, zurdo: derecha)');
   if (der.over || izq.over) errs.push('el joystick tapa una fuente');
   if (!der.above || !izq.above) errs.push('el joystick no quedó encima de la fuente de su lado');
   await p.evaluate(() => { HAND = 'der'; const st = load(); delete st.ctl; delete st.hand; save(st); });
