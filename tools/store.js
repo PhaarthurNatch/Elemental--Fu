@@ -83,9 +83,9 @@ const path = require('path');
   // la corriente de aire se disipa si el rival está muy lejos; cerca lo golpea
   const shoot = async () => { const u = await p.evaluate(() => { const o = G.orbs.find(o => o.docked && o.owner === G.me) || G.me.nodes[G.me.ix.upper], f = G.foe.nodes[G.foe.ix.upper], dx = f.x - o.x, dy = f.y - o.y, d = Math.hypot(dx, dy); return { x: dx / d, y: dy / d }; });
     const hp = await p.evaluate(() => G.foe.hp); await t('touchStart', [{ x: 300, y: 600 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 300 + u.x * i * 60, y: 600 + u.y * i * 60 }]); await p.waitForTimeout(8); } await t('touchEnd', []); await p.waitForTimeout(1300); return hp - await p.evaluate(() => G.foe.hp); };
-  await p.evaluate(() => { G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.05; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(300);
+  await p.evaluate(() => { G.foe.x = ARENA_W * 0.95; G.foe.y = ARENA_D * 0.02; G.foe.home = { x: G.foe.x, y: G.foe.y }; G.me.x = ARENA_W * 0.05; G.me.y = ARENA_D * 0.98; }); await p.waitForTimeout(300); // muy lejos (en diagonal), más allá del alcance del aire
   const airFar = await shoot();
-  await p.evaluate(() => { G.orbs = []; const c = G.me.nodes[G.me.ix.upper], o = newOrb('air', c.x, c.y); o.docked = true; o.owner = G.me; o.lvl = 1; G.orbs.push(o); G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.6 - 110; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
+  await p.evaluate(() => { G.orbs = []; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; const c = G.me.nodes[G.me.ix.upper], o = newOrb('air', c.x, c.y); o.docked = true; o.owner = G.me; o.lvl = 1; G.orbs.push(o); G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.6 - 110; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
   const airNear = await shoot();
   if (!(airFar < 0.5 && airNear > 5)) errs.push(`aire: la corriente no se disipó lejos o no dañó cerca (${airFar}, ${airNear})`);
   // tierra: ya no se sacan piedras pequeñas del piso; las que quedan al romperse la roca grande se toman, orbitan (hasta 3) y giran; lanzada cae al suelo y se puede volver a tomar

@@ -20,7 +20,7 @@ const { chromium, devices } = require('playwright');
   const before = await p.evaluate(() => { const N = G.me.nodes, a = [...G.me.ix.arms].sort((x, y) => N[x.sh].x - N[y.sh].x)[1]; return { x: N[a.ha].x, y: N[a.ha].y, rx: N[a.ha].x - N[a.sh].x, ry: N[a.ha].y - N[a.sh].y }; });
   await touch('touchStart', [{ x: 300, y: 500, id: 2 }]); for (let i = 1; i <= 12; i++) { await touch('touchMove', [{ x: 300 + i * 6, y: 500 - i * 8, id: 2 }]); await p.waitForTimeout(20); }
   await p.waitForTimeout(300);
-  const during = await p.evaluate(() => { const N = G.me.nodes, a = G.me.ix.arms.find(x => x.ctl); return a ? { x: N[a.ha].x, y: N[a.ha].y, len: Math.hypot(N[a.ha].x - N[a.sh].x, N[a.ha].y - N[a.sh].y) } : null; });
+  const during = await p.evaluate(() => { const N = G.me.nodes, a = G.me.ix.arms.find(x => x.ctl); if (!a) return null; const w = toWorld(372, 404); return { x: N[a.ha].x, y: N[a.ha].y, len: Math.hypot(N[a.ha].x - N[a.sh].x, N[a.ha].y - N[a.sh].y), toFinger: Math.hypot(N[a.ha].x - w.x, N[a.ha].y - w.y), shToFinger: Math.hypot(N[a.sh].x - w.x, N[a.sh].y - w.y), armLen: (BODY.armU + BODY.armF) * G.me.s }; }); // la mano más cercana sigue al dedo y se estira hacia él
 
   // y a la vez el otro lado
   await touch('touchMove', [{ x: 372, y: 404, id: 2 }, { x: 80, y: 500, id: 3 }]); await p.waitForTimeout(30);
@@ -62,7 +62,7 @@ const { chromium, devices } = require('playwright');
   if (jumped || !freed) errs.push('saltó o el brazo no se soltó al tocar la llama');
   console.log({ z1: z1.toFixed(0), z2: z2.toFixed(0), charge: ch.toFixed(2), before, during, both, after, back });
   if (z1 > 0.5 || z2 > 0.5) errs.push('todavía salta al tocar la pantalla');
-  if (!during || !(during.x > before.x + 10 && during.y < before.y - 10)) errs.push('el brazo no siguió al dedo');
+  if (!during || !(during.len > during.armLen * 1.2 && during.toFinger < during.shToFinger - during.armLen * 1.2)) errs.push('la mano no siguió al dedo estirándose: ' + JSON.stringify(during));
   if (both !== 2) errs.push('no se controlan los dos brazos a la vez');
   if (after.ctl !== 0 || Math.hypot(back.rx - before.rx, back.ry - before.ry) > 4) errs.push('el brazo no volvió');
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
