@@ -1,5 +1,5 @@
 // Prueba de los toques en la pelea: tocar = saltar (más largo, más alto), arrastrar = mover el brazo del lado del dedo, tocar un pozo o llama = el brazo se estira hacia allá y sigue al dedo; al soltar vuelve.
-// Uso: node elemental-fu/tools/controls.js
+// Uso: node tools/controls.js
 const { chromium, devices } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ ...devices['iPhone 13'] });

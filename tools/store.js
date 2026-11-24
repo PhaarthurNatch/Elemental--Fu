@@ -1,5 +1,5 @@
 // Prueba de guardar la esfera: llevarla a tu personaje y dejarla ahí la deja flotando; deslizar rápido hacia el rival la dispara y lo daña.
-// Uso: node elemental-fu/tools/store.js
+// Uso: node tools/store.js
 const { chromium, devices } = require('playwright');
 const path = require('path');
 (async () => {

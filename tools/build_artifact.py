@@ -2,7 +2,7 @@
 """Genera la copia de index.html para publicar como Artifact.
 
 El Artifact agrega su propio <!doctype>, <html>, <head> y <body>, así que se quitan del archivo.
-Uso: python3 elemental-fu/tools/build_artifact.py salida.html
+Uso: python3 tools/build_artifact.py salida.html
 """
 import os
 import sys

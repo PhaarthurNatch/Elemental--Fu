@@ -1,5 +1,5 @@
 // Prueba del escudo y el daño: mantener presionada tu llama forma el escudo; lanzar la bola de fuego daña al rival; con escudo el daño baja.
-// Uso: node elemental-fu/tools/combat.js
+// Uso: node tools/combat.js
 const { chromium, devices } = require('playwright');
 (async () => {
   const b = await chromium.launch(); const p = await b.newPage({ ...devices['iPhone 13'] });
