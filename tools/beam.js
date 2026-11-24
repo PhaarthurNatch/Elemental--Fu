@@ -8,10 +8,12 @@ const { chromium, devices } = require('playwright');
   await p.goto('file://' + require('path').resolve(__dirname, '..', 'index.html')); await p.waitForTimeout(300);
   const c = await p.context().newCDPSession(p), t = (type, pts) => c.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
   const start = async el => {
-    await p.evaluate(el => { if (G) document.getElementById('btnBack').click(); document.querySelector(`.elbtn[data-el="${el}"]`).click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.25; G.foe.home = { x: G.foe.x, y: G.foe.y }; }, el);
+    await p.evaluate(el => { if (G) document.getElementById('btnBack').click(); document.querySelector(`.elbtn[data-el="${el}"]`).click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.25; G.foe.home = { x: G.foe.x, y: G.foe.y }; }, el);
     await p.waitForTimeout(600);
   };
-  const swipe = async () => { await t('touchStart', [{ x: 200, y: 640 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 200, y: 640 - i * 60 }]); await p.waitForTimeout(8); } }; // rápido hacia arriba (hacia el rival)
+  const swipe = async (dir) => { // deslizar rápido hacia el rival (desde donde sale el ataque: la mano o la burbuja) o en la dirección dada
+    const u = dir || await p.evaluate(() => { const o = G.orbs.find(o => o.docked && o.owner === G.me) || G.me.nodes[G.me.ix.upper], f = G.foe.nodes[G.foe.ix.upper], dx = f.x - o.x, dy = f.y + 4 * G.foe.s - o.y, d = Math.hypot(dx, dy); return { x: dx / d, y: dy / d }; });
+    await t('touchStart', [{ x: 200, y: 640 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 200 + u.x * i * 60, y: 640 + u.y * i * 60 }]); await p.waitForTimeout(8); } };
   const reach = () => p.evaluate(() => { const bm = G.beams.find(x => x.on); if (!bm) return 0; return Math.max(0, ...bm.parts.map(q => Math.hypot(q.vx, q.vy))) * BEAM.life; }); // alcance = rapidez de las llamas nuevas × su vida
   const res = {};
 
@@ -61,6 +63,17 @@ const { chromium, devices } = require('playwright');
   if (res.w1.left || res.w3.left) errs.push('agua: la burbuja no se gastó');
   if (!(res.w3.d > res.w1.d * 1.8)) errs.push('agua: la burbuja grande no duró más');
   if (!(res.w3.dmg > 3)) errs.push('agua: el chorro no dañó');
+  // disparar hacia el lado te impulsa hacia el otro lado: aire más que fuego; hacia el rival, no
+  const recoil = async (el, u) => { await start(el); const x0 = await p.evaluate(() => G.me.x); await swipe(u); await p.waitForTimeout(700); const x1 = await p.evaluate(() => G.me.x); await t('touchEnd', []); await p.waitForTimeout(400); return x1 - x0; };
+  res.recoil = { fuego: (await recoil('fuego', { x: 1, y: 0 })).toFixed(0), aire: (await recoil('aire', { x: 1, y: 0 })).toFixed(0), aireAdelante: (await recoil('aire')).toFixed(0) };
+  if (!(res.recoil.fuego < -15)) errs.push('fuego: disparar hacia el lado no lo impulsó');
+  if (!(+res.recoil.aire < +res.recoil.fuego * 1.4)) errs.push('aire: no impulsó más que el fuego');
+  if (!(Math.abs(res.recoil.aireAdelante) < 10)) errs.push('aire: disparar hacia el rival lo movió');
+  // rival de prueba: lanza fuego, agua y aire de corrido
+  await start('tierra'); await p.evaluate(() => { G.foeTest = true; G.foe.cyT = 0; });
+  const kinds = new Set(); for (let i = 0; i < 40; i++) { await p.waitForTimeout(200); for (const k of await p.evaluate(() => G.beams.filter(b => b.on && b.owner === G.foe).map(b => b.k + ':' + G.foe.el))) kinds.add(k); }
+  res.cycle = [...kinds];
+  if (!['fire:fuego', 'water:agua', 'air:aire'].every(k => kinds.has(k))) errs.push('el rival de prueba no lanzó fuego, agua y aire: ' + res.cycle);
   // choques: el rival contesta con su ataque; los elementos chocan (vapor, agua desparramada, fuego disperso) y si están cerca los dos retroceden
   const clash = async (mine, his, kind) => {
     await start(mine);
