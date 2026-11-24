@@ -8,7 +8,7 @@ const { chromium, devices } = require('playwright');
   await p.goto('file://' + require('path').resolve(__dirname, '..', 'index.html')); await p.waitForTimeout(300);
   const c = await p.context().newCDPSession(p), t = (type, pts) => c.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
   const start = async el => {
-    await p.evaluate(el => { if (G) document.getElementById('btnBack').click(); document.querySelector(`.elbtn[data-el="${el}"]`).click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.25; G.foe.home = { x: G.foe.x, y: G.foe.y }; }, el);
+    await p.evaluate(el => { if (G) document.getElementById('btnBack').click(); document.querySelector(`.elbtn[data-el="${el}"]`).click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.25; G.foe.home = { x: G.foe.x, y: G.foe.y }; }, el);
     await p.waitForTimeout(600);
   };
   const swipe = async () => { await t('touchStart', [{ x: 200, y: 640 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 200, y: 640 - i * 60 }]); await p.waitForTimeout(8); } }; // rápido hacia arriba (hacia el rival)
@@ -61,6 +61,22 @@ const { chromium, devices } = require('playwright');
   if (res.w1.left || res.w3.left) errs.push('agua: la burbuja no se gastó');
   if (!(res.w3.d > res.w1.d * 1.8)) errs.push('agua: la burbuja grande no duró más');
   if (!(res.w3.dmg > 3)) errs.push('agua: el chorro no dañó');
+  // choques: el rival contesta con su ataque; los elementos chocan (vapor, agua desparramada, fuego disperso) y si están cerca los dos retroceden
+  const clash = async (mine, his, kind) => {
+    await start(mine);
+    await p.evaluate(his => { const f = G.foe; f.el = his; f.E = ELEM[his]; if (his === 'agua') giveBubble(f, 3); }, his); await p.waitForTimeout(200);
+    const d0 = await p.evaluate(() => Math.hypot(G.foe.x - G.me.x, G.foe.y - G.me.y));
+    await swipe(); let seen = 0, clashes = 0;
+    for (let i = 0; i < 12; i++) { await p.waitForTimeout(120); const r = await p.evaluate(k => ({ n: G.fx.filter(q => q.k === k).length, c: G.clash ? 1 : 0, foeBeam: G.beams.some(b => b.on && b.owner === G.foe) }), kind); seen = Math.max(seen, r.n); clashes += r.c; }
+    const d1 = await p.evaluate(() => Math.hypot(G.foe.x - G.me.x, G.foe.y - G.me.y)); await t('touchEnd', []); await p.waitForTimeout(700);
+    return { seen, clashes, push: (d1 - d0).toFixed(0), foeOff: await p.evaluate(() => !G.beams.some(b => b.on && b.owner === G.foe)) };
+  };
+  res.fireWater = await clash('fuego', 'agua', 'steam'); res.airWater = await clash('aire', 'agua', 'drop'); res.airFire = await clash('aire', 'fuego', 'flame');
+  for (const [n, r] of [['fuego/agua (vapor)', res.fireWater], ['aire/agua (agua desparramada)', res.airWater], ['aire/fuego (fuego disperso)', res.airFire]]) {
+    if (!(r.seen > 3 && r.clashes > 3)) errs.push(n + ': no chocaron');
+    if (!(r.push > 10)) errs.push(n + ': no retrocedieron');
+    if (!r.foeOff) errs.push(n + ': el rival no dejó de atacar');
+  }
   console.log(res);
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();
