@@ -98,8 +98,8 @@ const { chromium, devices } = require('playwright');
     const d1 = await p.evaluate(() => Math.hypot(G.foe.x - G.me.x, G.foe.y - G.me.y)); await t('touchEnd', []); await p.waitForTimeout(700);
     return { seen, clashes, push: (d1 - d0).toFixed(0), foeOff: await p.evaluate(() => !G.beams.some(b => b.on && b.owner === G.foe)) };
   };
-  res.fireWater = await clash('fuego', 'agua', 'steam'); res.airWater = await clash('aire', 'agua', 'drop'); res.airFire = await clash('aire', 'fuego', 'flame');
-  for (const [n, r] of [['fuego/agua (vapor)', res.fireWater], ['aire/agua (agua desparramada)', res.airWater], ['aire/fuego (fuego disperso)', res.airFire]]) {
+  res.fireWater = await clash('fuego', 'agua', 'steam'); res.airWater = await clash('aire', 'agua', 'wisp'); res.airFire = await clash('aire', 'fuego', 'wisp'); // el aire se detiene y se desvía
+  for (const [n, r] of [['fuego/agua (vapor)', res.fireWater], ['aire/agua (el agua detiene el aire)', res.airWater], ['aire/fuego (el fuego detiene el aire)', res.airFire]]) {
     if (!(r.seen > 3 && r.clashes > 3)) errs.push(n + ': no chocaron');
     if (!(r.push > 10)) errs.push(n + ': no retrocedieron');
     if (!r.foeOff) errs.push(n + ': el rival no dejó de atacar');
