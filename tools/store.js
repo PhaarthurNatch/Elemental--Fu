@@ -1,4 +1,4 @@
-// Prueba de guardar la esfera: llevarla a tu personaje y dejarla ahí la deja flotando; deslizar rápido hacia el rival la dispara y lo daña.
+// Prueba de guardar la esfera: llevarla a tu personaje la adosa de inmediato (sin sacar otra ni salpicar al soltar); deslizar rápido hacia el rival la dispara y lo daña.
 // Uso: node tools/store.js
 const { chromium, devices } = require('playwright');
 const path = require('path');
@@ -15,9 +15,11 @@ const path = require('path');
   // sacar la esfera despacio y llevarla a tu personaje
   await t('touchStart', [{ x: pool.x, y: pool.y }]); await p.waitForTimeout(60);
   for (let i = 1; i <= 25; i++) { await t('touchMove', [{ x: pool.x + (me.x - pool.x) * i / 25, y: pool.y + (me.y - pool.y) * i / 25 }]); await p.waitForTimeout(30); }
-  await p.waitForTimeout(150); const early = await p.evaluate(() => G.orbs.filter(o => o.docked).length); // no es inmediato
-  await p.waitForTimeout(800); const docked = await p.evaluate(() => G.orbs.filter(o => o.docked).length);
-  await t('touchEnd', []); await p.waitForTimeout(800);
+  await p.waitForTimeout(100); const early = await p.evaluate(() => G.orbs.filter(o => o.docked).length); // inmediato
+  for (let i = 1; i <= 10; i++) { await t('touchMove', [{ x: me.x + i * 4, y: me.y - i * 3 }]); await p.waitForTimeout(60); } // sigue moviendo el dedo y lo suelta
+  await t('touchEnd', []); await p.waitForTimeout(100);
+  const extra = await p.evaluate(() => ({ orbs: G.orbs.filter(o => !o.docked).length, splash: G.splashes.length })); // no sale otra esfera ni una salpicadura
+  await p.waitForTimeout(700); const docked = await p.evaluate(() => G.orbs.filter(o => o.docked).length);
   const still = await p.evaluate(() => { const o = G.orbs.find(o => o.docked), c = G.me.nodes[G.me.ix.upper]; return o ? Math.hypot(o.x - c.x, o.y - c.y) : null; });
   // llevar 3 esferas más: el máximo es 3 orbitando
   for (let n = 0; n < 3; n++) { await t('touchStart', [{ x: pool.x, y: pool.y }]); await p.waitForTimeout(60);
@@ -43,8 +45,9 @@ const path = require('path');
     await p.waitForTimeout(900); await t('touchEnd', []); await p.waitForTimeout(700); }
   const fireN = await p.evaluate(() => G.orbs.filter(o => o.docked && o.k === 'fire').length);
   if (fireN !== 3) errs.push('fuego: no quedaron 3 orbitando: ' + fireN);
-  console.log({ early, docked, maxOk, fireN, still: still && still.toFixed(1), notFired, flying, dmg: dmg.toFixed(1) });
-  if (early !== 0) errs.push('se guardó de inmediato');
+  console.log({ early, extra, docked, maxOk, fireN, still: still && still.toFixed(1), notFired, flying, dmg: dmg.toFixed(1) });
+  if (early !== 1) errs.push('no se adosó de inmediato');
+  if (extra.orbs || extra.splash) errs.push('al adosar salió otra esfera o una salpicadura: ' + JSON.stringify(extra));
   if (docked !== 1 || !(still < 55)) errs.push('no quedó orbitando cerca del personaje');
   if (!(maxOk.n === 1 && maxOk.lvl === 3)) errs.push('agua: no quedó una sola esfera de tamaño 3: ' + JSON.stringify(maxOk));
   if (notFired !== 1) errs.push('disparó hacia atrás');
