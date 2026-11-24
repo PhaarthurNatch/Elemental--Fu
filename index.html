@@ -84,7 +84,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.41'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.42'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -537,7 +537,7 @@ const endPtr = (e, up) => {
     const pr = arenaProps()[p.prop], d = Math.hypot(p.x - p.x0, p.y - p.y0);
     if (PROP_EL[pr.k] === G.me.el && d > SPLASH.decide) { const v = d / Math.max(0.03, (performance.now() - p.dragT) / 1000); spawnSplash(pr, (p.x - p.x0) / d, (p.y - p.y0) / d, v, G.me); }
   }
-  if (p.orb) { const o = p.orb, sp = Math.hypot(o.vx, o.vy); o.held = false; if (sp > THROW.min && G) { const k = Math.min(1, THROW.max / sp); launch(o, o.vx * k, o.vy * k, G.me); } else if (o.k === 'earth') stoneDrop(o); } // soltarla moviéndola rápido = lanzarla; despacio: el agua cae y salpica, el fuego se apaga
+  if (p.orb && !p.orb.dead && p.orb.life > 0) { const o = p.orb, sp = Math.hypot(o.vx, o.vy); o.held = false; if (sp > THROW.min && G) { const k = Math.min(1, THROW.max / sp); launch(o, o.vx * k, o.vy * k, G.me); } else if (o.k === 'earth') stoneDrop(o); } // soltarla moviéndola rápido = lanzarla; despacio: el agua cae y salpica, el fuego se apaga
   if (p.boulder) { if (p.boulder.raised && p.boulder.life > 0) launchBoulder(p.boulder); } // tierra: al soltar, la roca grande sale lanzada
   else if (up && G && G.phase === 'fight' && p.swipe && !p.beam && !p.fired && !fireDocked(p)) { if (G.me.el === 'tierra') { const o = raiseBoulder(p, G.me); if (o) { o.rise = 1; launchBoulder(o); } } else startBeam(p, G.me, performance.now() + BEAM.burst * 1000); } // soltó pronto después de deslizar: dispara la esfera guardada o una llamarada/ráfaga corta (tierra: lanza la roca grande de inmediato)
   if (p.beam) p.beam.stopAt = Math.max(performance.now(), p.beam.t0 + BEAM.burst * 1000); // al soltar, la llamarada se corta
@@ -851,6 +851,45 @@ function boulderStep(o, dt) {
   o.x += o.vx * dt; o.y += o.vy * dt; o.hot = Math.max(0, o.hot - dt * 1.5);
   if (o.hp <= 0) breakBoulder(o);
 }
+// Qué le hace un elemento al otro cuando chocan sus ataques (pedido del dueño): el aire y el agua le quitan vuelo a la tierra (el fuego no); el agua detiene al aire y al fuego;
+// la tierra detiene todo; el fuego detiene al aire y achica al agua (sin detenerla). Mismo elemento: se anulan
+const HIT_RULE = { earth: { earth: 'stop', fire: 'stop', water: 'stop', air: 'stop' }, water: { air: 'stop', fire: 'stop', earth: 'slow', water: 'stop' }, air: { earth: 'slow', air: 'stop' }, fire: { air: 'stop', water: 'weaken', fire: 'stop' } };
+function popOrb(o) { // una esfera guardada, en la mano o lanzada se deshace
+  if (o.k === 'earth') { if (o.big) breakBoulder(o); else shatter(o); return; }
+  o.life = 0; o.dead = true; o.fxDone = true; o.docked = o.held = o.thrown = false; orbFx(o, 10);
+}
+function hitEffect(fx, B, A, isOrbA) { // aplica a B lo que le hace A
+  if (!fx) return;
+  if (B.q) { const q = B.q; if (fx === 'stop') q.life = 0; else if (fx === 'weaken' && !q.weak) { q.weak = true; q.r *= 0.55; if (q.I != null) q.I *= 0.5; } return; } // llama / gota / viento
+  const o = B.o, stay = !o.thrown; // esfera: lanzada o quieta (guardada, en la mano, la roca grande levantada)
+  if (fx === 'stop') {
+    if (o.big) { if (A.big) breakBoulder(o); else { o.hp -= isOrbA ? BOULDER.hpOrb : A.k === 'fire' ? BOULDER.hpFire : BOULDER.hpBeam; if (A.k === 'fire') { o.burn = Math.min(1, o.burn + (isOrbA ? 0.15 : 0.012)); o.hot = 1; } if (o.hp <= 0) breakBoulder(o); } return; } // la roca grande sólo cae ante otra roca grande; lo demás la gasta (y el fuego la quema)
+    if (stay && (o.k === 'water' || o.k === 'air') && o.lvl) { o.lvl -= isOrbA ? 1 : 0.15; if (o.lvl < 0.4) popOrb(o); return; } // la burbuja guardada pierde de a poco
+    if (stay && !isOrbA) { o.hp = (o.hp ?? 1) - 0.2; if (o.hp > 0) return; } // una esfera quieta aguanta algunas llamas o gotas
+    popOrb(o); return;
+  }
+  if (fx === 'weaken') { if (stay && o.lvl) { o.lvl -= isOrbA ? 0.5 : 0.05; if (o.lvl < 0.4) popOrb(o); } else if (!o.weak) { o.weak = true; o.size = (o.size || 1) * 0.6; o.dmgK = 0.5; } return; } // el agua se achica
+  if (fx === 'slow' && o.thrown) { const k = isOrbA ? 0.75 : 0.96; o.vx *= k; o.vy *= k; o.life -= isOrbA ? 0.25 : 0.03; if (o.life <= 0.02) { if (o.big) breakBoulder(o); else stoneDrop(o); } } // le quita vuelo: cae antes
+}
+function clashResolve(dt) { // choques entre ataques de distinto dueño: llamaradas/chorros/ráfagas, salpicaduras, esferas lanzadas, guardadas y en la mano, y la roca grande
+  const parts = [], orbs = []; let hits = 0, hx = 0, hy = 0, pair = null;
+  for (const B of G.beams) for (const q of B.parts) if (q.life > 0) parts.push({ k: B.k, owner: B.owner, q, x: q.x, y: q.y, r: q.r });
+  for (const S of G.splashes) for (const q of S.parts) if (q.life > 0) parts.push({ k: S.k, owner: S.owner, q, x: q.x, y: q.y, r: q.r });
+  for (const o of G.orbs) { if (o.life <= 0 || o.dead || o.rest || o.fall || (o.k === 'air' && o.docked) || !o.owner && !o.held) continue; orbs.push({ k: o.k, owner: o.owner || G.me, o, big: o.big, r: orbR(o) * (o.k === 'air' ? 1.6 : 1) }); }
+  const live = X => X.q ? X.q.life > 0 : X.o.life > 0 && !X.o.dead;
+  const meet = (A, B, isOrbA, isOrbB) => { // A y B se tocan: cada uno le hace lo suyo al otro
+    const ra = HIT_RULE[A.k] || {}, rb = HIT_RULE[B.k] || {}, ea = ra[B.k], eb = rb[A.k], ax = A.q || A.o, bx = B.q || B.o, mx = (ax.x + bx.x) / 2, my = (ax.y + bx.y) / 2;
+    hitEffect(ea, B, A, isOrbA); hitEffect(eb, A, B, isOrbB);
+    for (const [X, Y, isOrbY] of [[A, B, isOrbB], [B, A, isOrbA]]) if (X.big && !Y.big && Y.k !== 'earth') { const o = X.o; o.hp -= isOrbY ? BOULDER.hpOrb : Y.k === 'fire' ? BOULDER.hpFire : BOULDER.hpBeam; if (Y.k === 'fire') { o.burn = Math.min(1, o.burn + (isOrbY ? 0.15 : 0.012)); o.hot = 1; } if (o.hp <= 0) breakBoulder(o); } // lo que choca la roca grande la gasta; el fuego la quema un poco
+    if (A.big || B.big) blockFx(A.big ? B.k : A.k, mx, my, (A.big ? bx : ax).vx || 0, (A.big ? bx : ax).vy || 0); else for (let i = 0; i < (isOrbA && isOrbB ? 8 : 1); i++) clashFx(A.k, B.k, mx, my, (ax.vx || 0) + (bx.vx || 0), (ax.vy || 0) + (bx.vy || 0));
+    if (!A.big && !B.big) { hits++; hx += mx; hy += my; pair = [A.k, B.k]; }
+  };
+  for (let i = 0; i < orbs.length; i++) for (let j = i + 1; j < orbs.length; j++) { const A = orbs[i], B = orbs[j]; if (A.owner === B.owner || !live(A) || !live(B) || !(A.o.thrown || B.o.thrown || A.big || B.big || A.o.held || B.o.held || A.o.docked || B.o.docked)) continue; if (Math.hypot(A.o.x - B.o.x, A.o.y - B.o.y) < A.r + B.r) meet(A, B, true, true); }
+  for (const A of orbs) for (const P of parts) { if (A.owner === P.owner || !live(A) || !live(P)) continue; if (Math.hypot(A.o.x - P.q.x, A.o.y - P.q.y) < A.r + P.q.r * 0.6) meet(A, P, true, false); }
+  for (let i = 0; i < parts.length; i++) { const A = parts[i]; if (!live(A)) continue; for (let j = i + 1; j < parts.length; j++) { const B = parts[j]; if (A.owner === B.owner || !live(B)) continue;
+    const qa = A.q, qb = B.q, dx = qa.x - qb.x, dy = qa.y - qb.y, rr = (qa.r + qb.r) * 0.7 + 6 + Math.hypot(qa.vx - qb.vx, qa.vy - qb.vy) * dt * 0.5; if (dx * dx + dy * dy < rr * rr) { meet(A, B, false, false); if (!live(A)) break; } } }
+  return { hits, hx, hy, pair };
+}
 function blockFx(k, x, y, vx, vy) { // lo que choca contra la roca grande se esparce según su elemento
   const sp = Math.hypot(vx, vy) || 1, px = -vy / sp, py = vx / sp, s = Math.random() < 0.5 ? -1 : 1;
   if (k === 'water') for (let i = 0; i < 2; i++) fxPush({ k: 'drop', x, y, vx: px * s * rnd(80, 220) - vx / sp * rnd(20, 80), vy: py * s * rnd(80, 220) - rnd(60, 150), g: 520, life: rnd(0.4, 0.7), r: rnd(1.5, 3) });
@@ -972,28 +1011,8 @@ function beamStep(dt) {
       else if (b.k === 'water') q.vy += 90 * dt; else q.r += 4 * dt;
     }
   }
-  // 2) choques entre los ataques de los dos (pedido del dueño): las llamas / gotas / viento que se encuentran se anulan y sueltan vapor, agua desparramada o fuego disperso
-  let hits = 0, hx = 0, hy = 0, pair = null;
-  for (let i = 0; i < G.beams.length; i++) for (let j = i + 1; j < G.beams.length; j++) {
-    const A = G.beams[i], B = G.beams[j]; if (A.owner === B.owner) continue;
-    for (const qa of A.parts) { if (qa.life <= 0) continue;
-      for (const qb of B.parts) { if (qb.life <= 0) continue;
-        const dx = qa.x - qb.x, dy = qa.y - qb.y, rr = (qa.r + qb.r) * 0.7 + 6 + Math.hypot(qa.vx - qb.vx, qa.vy - qb.vy) * dt * 0.5;
-        if (dx * dx + dy * dy < rr * rr) { qa.life = qb.life = 0; const mx = (qa.x + qb.x) / 2, my = (qa.y + qb.y) / 2; clashFx(A.k, B.k, mx, my, qa.vx + qb.vx, qa.vy + qb.vy); hits++; hx += mx; hy += my; pair = [A.k, B.k]; break; } } }
-  }
-  for (const o of G.orbs) { if (!o.big || o.life <= 0) continue; const R = orbR(o); // la roca grande defiende de todo: lo que la choca se esparce según su elemento; el fuego la quema un poco
-    for (const B of G.beams) { if (B.owner === o.owner) continue; for (const q of B.parts) { if (q.life <= 0 || Math.hypot(q.x - o.x, q.y - o.y) > R + q.r * 0.6) continue; q.life = 0; blockFx(B.k, q.x, q.y, q.vx, q.vy); o.hp -= B.k === 'fire' ? BOULDER.hpFire : BOULDER.hpBeam; if (B.k === 'fire') { o.burn = Math.min(1, o.burn + 0.012); o.hot = 1; } } }
-    for (const o2 of G.orbs) { if (o2 === o || o2.life <= 0 || o2.owner === o.owner || !(o2.thrown || o2.big) || Math.hypot(o.x - o2.x, o.y - o2.y) > R + orbR(o2) * (o2.k === 'air' ? 1.6 : 1)) continue;
-      if (o2.big) { breakBoulder(o); breakBoulder(o2); break; } // dos rocas grandes se rompen
-      if (o2.k === 'earth') shatter(o2); else { for (let i = 0; i < 8; i++) blockFx(o2.k, o2.x, o2.y, o2.vx, o2.vy); o2.life = 0; o2.fxDone = true; if (o2.k === 'fire') { o.burn = Math.min(1, o.burn + 0.15); o.hot = 1; } } // las piedras se rompen contra ella
-      o.hp -= BOULDER.hpOrb; }
-  }
-  for (const o of G.orbs) { if (!o.thrown || o.life <= 0 || o.big) continue; // la esfera lanzada también choca con el ataque del otro (o con su esfera)
-    for (const B of G.beams) { if (B.owner === o.owner) continue; for (const q of B.parts) { if (q.life <= 0 || Math.hypot(o.x - q.x, o.y - q.y) > orbR(o) * (o.k === 'air' ? 1.6 : 1) + q.r) continue; q.life = 0; o.hp = (o.hp ?? 1) - 0.12; clashFx(o.k, B.k, q.x, q.y, o.vx + q.vx, o.vy + q.vy); hits++; hx += q.x; hy += q.y; pair = [o.k, B.k]; if (o.hp <= 0) { for (let i = 0; i < 6; i++) clashFx(o.k, B.k, o.x, o.y, o.vx, o.vy); if (o.k === 'earth') stoneDrop(o); else { o.life = 0; o.fxDone = true; } break; } } } // la piedra se detiene y cae; las otras se deshacen
-    for (const o2 of G.orbs) if (o.thrown && o2 !== o && o2.thrown && !o2.big && o2.life > 0 && o2.owner !== o.owner && Math.hypot(o.x - o2.x, o.y - o2.y) < orbR(o) * (o.k === 'air' ? 1.6 : 1) + orbR(o2) * (o2.k === 'air' ? 1.6 : 1)) { // dos esferas lanzadas chocan (pedido del dueño): vapor, agua esparcida, fuego disperso; la piedra se detiene y cae al suelo
-      for (let i = 0; i < 10; i++) clashFx(o.k, o2.k, (o.x + o2.x) / 2, (o.y + o2.y) / 2, o.vx + o2.vx, o.vy + o2.vy); hits++; hx += (o.x + o2.x) / 2; hy += (o.y + o2.y) / 2; pair = [o.k, o2.k];
-      const rocks = o.k === 'earth' && o2.k === 'earth'; for (const q of [o, o2]) { if (q.k === 'earth') rocks ? shatter(q) : stoneDrop(q); else { q.life = 0; q.fxDone = true; } } } // dos piedras se rompen (pedido del dueño)
-  }
+  // 2) choques entre los ataques de los dos (pedido del dueño): cada elemento reacciona según HIT_RULE
+  const { hits, hx, hy, pair } = clashResolve(dt);
   if (hits) { G.clash = { x: hx / hits, y: hy / hits, t: CLASH.hold, pair }; }
   else if (G.clash && (G.clash.t -= dt) <= 0) G.clash = null;
   if (G.clash && G.phase === 'fight') { // presión: si están cerca y sus ataques chocan, los dos retroceden de a poco mientras sigan chocando (pedido del dueño)

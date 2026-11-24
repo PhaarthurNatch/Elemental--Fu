@@ -137,13 +137,13 @@ const path = require('path');
     await new Promise(r => setTimeout(r, 700)); const left = G.orbs.length; const big = raiseBoulder(null, G.foe, Math.PI, null); big.rise = 1; const c = newOrb('earth', G.foe.gx - 160, big.gy - 20); G.orbs.push(c); launch(c, 600, 0, G.me);
     await new Promise(r => setTimeout(r, 600)); return { left, stone: G.orbs.filter(o => !o.big).length, big: G.orbs.filter(o => o.big).length }; });
   if (!(breakR.left === 0 && breakR.stone === 0 && breakR.big === 1)) errs.push('las piedras no se rompieron: ' + JSON.stringify(breakR));
-  // choques entre esferas lanzadas: fuego + agua = vapor; piedra + fuego = la piedra cae al suelo
+  // choques entre esferas lanzadas: fuego + agua = vapor, el agua sigue achicada; piedra + fuego = la piedra detiene el fuego
   const orbClash = await p.evaluate(async () => { G.orbs = []; G.fx = []; const y = TOP + ARENA_D * 0.4 * DEPTH, a = newOrb('fire', 150, y), b = newOrb('water', 370, y); G.orbs.push(a, b); launch(a, 500, 0, G.me); launch(b, -500, 0, G.foe);
-    await new Promise(r => setTimeout(r, 600)); const steam = G.fx.filter(q => q.k === 'steam').length, left = G.orbs.length;
+    await new Promise(r => setTimeout(r, 250)); const steam = G.fx.filter(q => q.k === 'steam').length, left = G.orbs.length, weak = !!b.weak && b.life > 0 && a.life <= 0;
     const c = newOrb('earth', 150, y), d = newOrb('fire', 370, y); G.orbs.push(c, d); launch(c, 500, 0, G.me); launch(d, -500, 0, G.foe);
-    await new Promise(r => setTimeout(r, 900)); return { steam, left, stone: G.orbs.filter(o => o.k === 'earth' && o.rest).length, fire: G.orbs.filter(o => o.k === 'fire').length }; });
-  if (!(orbClash.steam > 3 && orbClash.left === 0)) errs.push('fuego y agua lanzados no chocaron con vapor: ' + JSON.stringify(orbClash));
-  if (!(orbClash.stone === 1 && orbClash.fire === 0)) errs.push('la piedra no cayó al chocar con el fuego: ' + JSON.stringify(orbClash));
+    await new Promise(r => setTimeout(r, 250)); return { steam, left, weak, stone: G.orbs.filter(o => o.k === 'earth' && o.thrown && !o.weak).length, fire: G.orbs.filter(o => o.k === 'fire').length }; });
+  if (!(orbClash.steam > 3 && orbClash.left === 1 && orbClash.weak)) errs.push('fuego contra agua: el agua debía seguir achicada y el fuego detenerse: ' + JSON.stringify(orbClash));
+  if (!(orbClash.stone === 1 && orbClash.fire === 0)) errs.push('la piedra debía detener el fuego y seguir volando: ' + JSON.stringify(orbClash));
   console.log({ ring, airFar, airNear, smalls: smalls.length, rocks: rocks.n, stoneDmg, orbClash });
   console.log({ early, extra, docked, maxOk, fireN, still: still && still.toFixed(1), back, flying, dmg: dmg.toFixed(1) });
   if (early !== 1) errs.push('no se adosó de inmediato');
