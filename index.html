@@ -55,6 +55,11 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .ctlopt .ic{font-size:28px;flex:none}
 .ctlopt b{display:block;font-size:16px}
 .ctlopt small{display:block;color:var(--muted);font-weight:600;font-size:13px;margin-top:2px}
+.handrow{display:flex;align-items:center;gap:8px;margin-top:4px}
+.handrow span{font-weight:800;margin-right:4px}
+.handopt{flex:1;height:42px;border-radius:12px;background:var(--panel2);font-weight:800;border:3px solid transparent}
+.handopt.on{border-color:var(--acc)}
+.handnote{color:var(--muted);font-weight:600;font-size:12px;text-align:center}
 #ctlDone{height:44px;border-radius:14px;background:var(--acc);color:#1b1407;font-weight:900;font-size:16px;margin-top:4px}
 #pick p{margin:0 0 8px;color:var(--muted);font-weight:700;font-size:16px}
 .elgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:380px}
@@ -92,6 +97,8 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
     <h2>Controles</h2>
     <button class="ctlopt" data-ctl="tilt"><span class="ic">📱</span><span><b>Inclinar el teléfono</b><small>Caminas inclinándolo, como una bolita. Antes de pelear se calibra el sensor.</small></span></button>
     <button class="ctlopt" data-ctl="joy"><span class="ic">🕹️</span><span><b>Joystick</b><small>Caminas con la palanca de abajo, arrastrando el dedo.</small></span></button>
+    <div class="handrow"><span>Mano</span><button class="handopt" data-hand="der">✋ Diestro</button><button class="handopt" data-hand="izq">🤚 Zurdo</button></div>
+    <small class="handnote">El joystick va abajo a la derecha (diestro) o a la izquierda (zurdo), sin tapar las fuentes.</small>
     <button id="ctlDone">Listo</button>
   </div>
 </div>
@@ -104,7 +111,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.47'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.48'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -500,7 +507,17 @@ const cv = $('cv');
 // Toques en la pelea (pedido del dueño): el brazo que se usa depende de dónde está tu dedo respecto del personaje (el que se ve de ese lado; si está ocupado, el otro).
 // Arrastrar el dedo mueve ese brazo; tocar un pozo o una llama estira ese brazo hacia allá y la mano sigue al dedo; tocar sin arrastrar = saltar (más largo, más fuerte)
 const PTRS = new Map();
-const joyCenter = () => ({ x: W / 2, y: H - JOY_R - 18 - SAB }); // abajo al centro (en las esquinas están el fuego y el pozo)
+let HAND = 'der'; // diestro: joystick abajo a la derecha; zurdo: abajo a la izquierda (pedido del dueño; se elige en «Controles»)
+function joyCenter() { // el joystick va abajo del lado de tu mano, corrido hacia el centro si taparía la fuente (llama o pozo) de esa esquina
+  const Rj = JOY_R, y = H - Rj - 18 - SAB, right = HAND === 'der'; let x = right ? W - Rj - 18 : Rj + 18;
+  if (scene !== 'duel') return { x, y };
+  const v = view();
+  for (const p of arenaProps().filter(p => right ? p.x > ARENA_W / 2 : p.x < ARENA_W / 2)) {
+    const cx = v.ox + p.x * v.k, gy = v.oy + (TOP + p.y * DEPTH) * v.k, hw = (p.r + 7 + 8) * v.k, top = gy - (p.k === 'fire' ? FIRE_H + p.r * 2.6 : (p.r + 7) * DEPTH) * v.k - 8, bot = gy + ((p.r + 7) * DEPTH) * v.k + 8;
+    const nx = clamp(x, cx - hw, cx + hw), ny = clamp(y, top, bot); if (Math.hypot(x - nx, y - ny) < Rj) x = right ? cx - hw - Rj : cx + hw + Rj;
+  }
+  return { x, y };
+}
 const toWorld = (sx, sy) => { const v = view(); return { x: (sx - v.ox) / v.k, y: (sy - v.oy) / v.k }; }; // de la pantalla al dibujo de la arena
 function propAt(sx, sy) { // ¿el dedo tocó un pozo o una llama? (zona generosa, para el dedo)
   const w = toWorld(sx, sy), ay = (w.y - TOP) / DEPTH, M = 16;
@@ -1273,7 +1290,7 @@ function drawCount(ctx) { // 3, 2, 1, ¡PELEA! (cada número aparece grande y se
   ctx.restore();
 }
 function drawLevel(ctx, W, H) { // nivel de burbuja abajo: muestra hacia dónde estás inclinando (en el link de prueba es la palanca para caminar)
-  const r = touchWalk() ? JOY_R : 30, x = W / 2, y = H - r - 18 - SAB;
+  const r = touchWalk() ? JOY_R : 30, j = joyCenter(), x = touchWalk() ? j.x : W / 2, y = H - r - 18 - SAB; // el joystick del lado de tu mano; el nivel (inclinando) al centro
   ctx.fillStyle = 'rgba(15,20,28,.55)'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r * 0.35, 0, TAU); ctx.stroke();
   ctx.fillStyle = G.src === 'none' ? 'rgba(255,255,255,.35)' : '#ffc861'; ctx.beginPath(); ctx.arc(x + G.inp.x * r * 0.7, y + G.inp.y * r * 0.7, 7, 0, TAU); ctx.fill();
@@ -1337,11 +1354,12 @@ $('btnBack').addEventListener('click', () => { clearTouches(); scene = 'pick'; G
 $('btnCal').addEventListener('click', () => { centerTilt(); showTip('Centrado', 1200); });
 
 $('ver').textContent = 'Versión ' + VERSION;
-CTL = load().ctl || (IN_FRAME ? 'joy' : 'tilt');
-function showCtl() { for (const b of document.querySelectorAll('.ctlopt')) b.classList.toggle('on', b.dataset.ctl === CTL); $('ctlBtn').textContent = '🎮 Controles: ' + (CTL === 'joy' ? 'Joystick' : 'Inclinar'); }
+CTL = load().ctl || (IN_FRAME ? 'joy' : 'tilt'); HAND = load().hand || 'der';
+function showCtl() { for (const b of document.querySelectorAll('.ctlopt')) b.classList.toggle('on', b.dataset.ctl === CTL); for (const b of document.querySelectorAll('.handopt')) b.classList.toggle('on', b.dataset.hand === HAND); $('ctlBtn').textContent = '🎮 Controles: ' + (CTL === 'joy' ? 'Joystick · ' + (HAND === 'der' ? 'Diestro' : 'Zurdo') : 'Inclinar'); }
 showCtl();
 $('ctlBtn').addEventListener('click', () => { showCtl(); $('ctlPanel').hidden = false; });
 for (const b of document.querySelectorAll('.ctlopt')) b.addEventListener('click', () => { CTL = b.dataset.ctl; const st = load(); st.ctl = CTL; save(st); showCtl(); });
+for (const b of document.querySelectorAll('.handopt')) b.addEventListener('click', () => { HAND = b.dataset.hand; const st = load(); st.hand = HAND; save(st); showCtl(); });
 $('ctlDone').addEventListener('click', () => { $('ctlPanel').hidden = true; });
 layout(); buildPick(); loop();
 if ('serviceWorker' in navigator && location.protocol === 'https:' && window.top === window) navigator.serviceWorker.register('sw.js').catch(() => { });

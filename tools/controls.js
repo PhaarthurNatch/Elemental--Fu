@@ -96,6 +96,14 @@ const { chromium, devices } = require('playwright');
   if (saved !== 'joy' || !/Joystick/.test(label)) errs.push('no se guardó la opción de Joystick');
   if (calib.phase !== 'count' || !calib.hidden) errs.push('con joystick todavía pide calibrar');
   if (!(x1 - x0 > 40)) errs.push('el joystick no hizo caminar');
-  await p.evaluate(() => { const st = load(); delete st.ctl; save(st); });
+  // diestro / zurdo: el joystick va abajo a la derecha / izquierda sin tapar las fuentes de esa esquina
+  const side = async hand => p.evaluate(hand => { HAND = hand; const j = joyCenter(), v = view(); let over = false;
+    for (const q of arenaProps()) { const cx = v.ox + q.x * v.k, gy = v.oy + (TOP + q.y * DEPTH) * v.k, hw = (q.r + 7) * v.k, top = gy - (q.k === 'fire' ? FIRE_H + q.r * 2.6 : (q.r + 7) * DEPTH) * v.k, bot = gy + (q.r + 7) * DEPTH * v.k; if (Math.hypot(j.x - clamp(j.x, cx - hw, cx + hw), j.y - clamp(j.y, top, bot)) < JOY_R) over = true; }
+    return { x: Math.round(j.x), W, over }; }, hand);
+  const der = await side('der'), izq = await side('izq');
+  console.log({ der, izq });
+  if (!(der.x > der.W / 2 && izq.x < izq.W / 2)) errs.push('el joystick no quedó del lado de la mano');
+  if (der.over || izq.over) errs.push('el joystick tapa una fuente');
+  await p.evaluate(() => { HAND = 'der'; const st = load(); delete st.ctl; delete st.hand; save(st); });
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();
