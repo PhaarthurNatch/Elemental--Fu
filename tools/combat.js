@@ -50,5 +50,15 @@ const { chromium, devices } = require('playwright');
   if (!(mid.flow > 0 && full > 0.4)) errs.push('no se formó el escudo');
   if (!(d1 > 5)) errs.push('el lanzamiento no dañó');
   if (!(d2 > 0 && d2 < d1 * 0.6)) errs.push('el escudo no redujo el daño');
+  // puñetazo: pegado al rival y sin esferas, deslizar rápido hacia él lo golpea con el puño (no sale llamarada)
+  await p.evaluate(() => { G.orbs = []; G.beams = []; G.foe.shield = 0; G.foe.hp = 100; G.me.shield = 0; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.5 - 36; G.foe.vx = G.foe.vy = 0; }); await p.waitForTimeout(500);
+  const pu = async () => { await t('touchStart', [{ x: 200, y: 640 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 200, y: 640 - i * 60 }]); await p.waitForTimeout(8); } await p.waitForTimeout(60);
+    const r = await p.evaluate(() => ({ dmg: 100 - G.foe.hp, punch: G.me.ix.arms.some(a => a.ctl && a.ctl.punch), beam: G.beams.length })); await t('touchEnd', []); await p.waitForTimeout(400); return r; };
+  const pz = await pu();
+  await p.evaluate(() => { G.foe.hp = 100; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.25; G.foe.vx = G.foe.vy = 0; G.beams = []; }); await p.waitForTimeout(500);
+  const far = await pu();
+  console.log({ puño: pz, lejos: far });
+  if (!(pz.dmg > 3 && pz.punch && pz.beam === 0)) errs.push('pegado al rival no dio un puñetazo');
+  if (far.punch || far.dmg > 0.5 && far.beam === 0) errs.push('lejos del rival dio un puñetazo');
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();
