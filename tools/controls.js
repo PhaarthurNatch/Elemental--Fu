@@ -81,5 +81,21 @@ const { chromium, devices } = require('playwright');
   if (!one || one.al < -20 || one.al > 70) errs.push('el cuerpo no giró con el brazo (quedó hacia atrás): ' + JSON.stringify(one));
   if (!one || one.elbow < 2) errs.push('el codo quedó completamente estirado');
   if (!(turn2 > 25 && turn2 < 62)) errs.push('con las dos manos debía girar sólo hasta cierto punto: ' + turn2.toFixed(0));
+  // opción de controles: elegir Joystick (se guarda); sin calibrar, y la palanca de abajo hace caminar
+  await p.evaluate(() => document.querySelector('#btnBack').click()); await p.waitForTimeout(200);
+  await p.click('#ctlBtn'); await p.click('.ctlopt[data-ctl="joy"]'); const label = await p.textContent('#ctlBtn'); await p.click('#ctlDone');
+  const saved = await p.evaluate(() => load().ctl);
+  await p.click('.elbtn[data-el="fuego"]'); await p.waitForTimeout(200);
+  const calib = await p.evaluate(() => ({ phase: G.phase, hidden: document.getElementById('calib').hidden }));
+  await p.waitForFunction(() => G.phase === 'fight', null, { timeout: 8000 });
+  await p.evaluate(() => { G.foeTest = false; G.foe.wait = 99; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; }); await p.waitForTimeout(300);
+  const j = await p.evaluate(() => joyCenter()), x0 = await p.evaluate(() => G.me.x);
+  await touch('touchStart', [{ x: j.x, y: j.y, id: 11 }]); await p.waitForTimeout(40); for (let i = 1; i <= 5; i++) { await touch('touchMove', [{ x: j.x + i * 10, y: j.y, id: 11 }]); await p.waitForTimeout(30); }
+  await p.waitForTimeout(700); const x1 = await p.evaluate(() => G.me.x); await touch('touchEnd', []);
+  console.log({ label, saved, calib, joyMoved: (x1 - x0).toFixed(0) });
+  if (saved !== 'joy' || !/Joystick/.test(label)) errs.push('no se guardó la opción de Joystick');
+  if (calib.phase !== 'count' || !calib.hidden) errs.push('con joystick todavía pide calibrar');
+  if (!(x1 - x0 > 40)) errs.push('el joystick no hizo caminar');
+  await p.evaluate(() => { const st = load(); delete st.ctl; save(st); });
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();

@@ -45,6 +45,17 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .logo .el4{background-image:linear-gradient(90deg,#4aa6ea 0 25%,#5cc266 25% 50%,#ff6a4a 50% 75%,#ffbb3a 75%)} /* los cuatro elementos */
 .logo .fu{background-image:linear-gradient(180deg,#fff3c4,#ffc861 50%,#ff6a2a);font-size:1.12em}
 #ver{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:0;right:0;text-align:center;color:var(--muted);font-weight:800;font-size:13px;letter-spacing:.5px;opacity:.85}
+#ctlBtn{margin-top:6px;height:44px;padding:0 18px;border-radius:14px;background:var(--panel);font-weight:800;font-size:15px;box-shadow:0 3px 0 rgba(0,0,0,.4)}
+#ctlBtn:active{transform:translateY(2px)}
+#ctlPanel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(12,17,24,.78);z-index:5}
+#ctlPanel .box{width:100%;max-width:360px;background:var(--panel);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 4px 0 rgba(0,0,0,.45)}
+#ctlPanel h2{margin:0 0 4px;font-size:22px;text-align:center}
+.ctlopt{display:flex;align-items:center;gap:12px;text-align:left;padding:12px;border-radius:14px;background:var(--panel2);border:3px solid transparent}
+.ctlopt.on{border-color:var(--acc)}
+.ctlopt .ic{font-size:28px;flex:none}
+.ctlopt b{display:block;font-size:16px}
+.ctlopt small{display:block;color:var(--muted);font-weight:600;font-size:13px;margin-top:2px}
+#ctlDone{height:44px;border-radius:14px;background:var(--acc);color:#1b1407;font-weight:900;font-size:16px;margin-top:4px}
 #pick p{margin:0 0 8px;color:var(--muted);font-weight:700;font-size:16px}
 .elgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:380px}
 .elbtn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 6px 12px;border-radius:18px;background:var(--panel);box-shadow:0 3px 0 rgba(0,0,0,.4);border:3px solid transparent}
@@ -76,15 +87,24 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
   <button id="calHold"><span>Mantén<br>presionado</span></button>
   <p id="calMsg"></p>
 </div>
+<div id="ctlPanel" hidden>
+  <div class="box">
+    <h2>Controles</h2>
+    <button class="ctlopt" data-ctl="tilt"><span class="ic">📱</span><span><b>Inclinar el teléfono</b><small>Caminas inclinándolo, como una bolita. Antes de pelear se calibra el sensor.</small></span></button>
+    <button class="ctlopt" data-ctl="joy"><span class="ic">🕹️</span><span><b>Joystick</b><small>Caminas con la palanca de abajo, arrastrando el dedo.</small></span></button>
+    <button id="ctlDone">Listo</button>
+  </div>
+</div>
 <div id="pick">
   <div id="ver"></div>
   <h1 class="logo" aria-label="Elemental-Fu"><span class="el4">Elemental</span><span class="fu">-Fu</span></h1>
   <p>Elige tu elemento</p>
   <div class="elgrid" id="elGrid"></div>
+  <button id="ctlBtn">🎮 Controles</button>
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.46'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.47'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -472,7 +492,8 @@ function tiltVec() {
 }
 const TOUCH = { id: null, x0: 0, y0: 0, x: 0, y: 0 };
 const IN_FRAME = (() => { try { return window.top !== window; } catch (e) { return true; } })();
-const TOUCH_WALK = IN_FRAME; // caminar con el dedo sólo en el link de prueba (ahí no llega la inclinación); en la web app se camina sólo inclinando (pedido del dueño)
+let CTL = 'tilt'; // controles (pedido del dueño): 'tilt' = inclinar el teléfono, 'joy' = joystick (palanca abajo al centro); se elige en «Controles» y se guarda; en el link de prueba (donde no llega la inclinación) parte en joystick
+const touchWalk = () => CTL === 'joy';
 const KEYS = new Set();
 addEventListener('keydown', e => KEYS.add(e.key.toLowerCase())); addEventListener('keyup', e => KEYS.delete(e.key.toLowerCase()));
 const cv = $('cv');
@@ -495,7 +516,7 @@ cv.addEventListener('pointerdown', e => {
   if (scene !== 'duel' || !G || G.phase !== 'fight') return;
   try { cv.setPointerCapture(e.pointerId); } catch (_) { }
   const j = joyCenter();
-  if (TOUCH_WALK && TOUCH.id == null && Math.hypot(e.clientX - j.x, e.clientY - j.y) < JOY_R * 1.4) { TOUCH.id = e.pointerId; TOUCH.x0 = j.x; TOUCH.y0 = j.y; TOUCH.x = e.clientX; TOUCH.y = e.clientY; return; } // palanca para caminar (link de prueba)
+  if (touchWalk() && TOUCH.id == null && Math.hypot(e.clientX - j.x, e.clientY - j.y) < JOY_R * 1.4) { TOUCH.id = e.pointerId; TOUCH.x0 = j.x; TOUCH.y0 = j.y; TOUCH.x = e.clientX; TOUCH.y = e.clientY; return; } // palanca para caminar (link de prueba)
   if (PTRS.size >= 2) return;
   const p = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t0: performance.now(), moved: false, arm: null, prop: -1 };
   const pi = G.me.el === 'aire' ? -1 : propAt(e.clientX, e.clientY); // el aire no usa pozos ni llamas
@@ -552,7 +573,7 @@ function readInput() {
   if (TOUCH.id != null) { let x = (TOUCH.x - TOUCH.x0) / JOY_R, y = (TOUCH.y - TOUCH.y0) / JOY_R; const L = Math.hypot(x, y); if (L > 1) { x /= L; y /= L; } return { x, y, src: 'touch' }; }
   let kx = 0, ky = 0; if (KEYS.has('arrowleft') || KEYS.has('a')) kx--; if (KEYS.has('arrowright') || KEYS.has('d')) kx++; if (KEYS.has('arrowup') || KEYS.has('w')) ky--; if (KEYS.has('arrowdown') || KEYS.has('s')) ky++;
   if (kx || ky) { const L = Math.hypot(kx, ky); return { x: kx / L, y: ky / L, src: 'keys' }; }
-  const t = tiltVec(); if (t) return { ...t, src: 'tilt' };
+  const t = CTL === 'tilt' ? tiltVec() : null; if (t) return { ...t, src: 'tilt' }; // con joystick no se usa la inclinación
   return { x: 0, y: 0, src: 'none' };
 }
 
@@ -574,7 +595,8 @@ function startDuel(el) {
   me.ph = me.phT = Math.atan2(foe.x - me.x, foe.y - me.y); foe.ph = foe.phT = Math.atan2(me.x - foe.x, me.y - foe.y); me.guard = me.guardK = foe.guard = foe.guardK = 1;
   layout(); for (const m of G.ms) { place(m); m.resetRig(); for (let i = 0; i < 30; i++) m.step(1 / 60); }
   if (foe.el === 'agua' && !G.foeTest) giveBubble(foe, 2); // el rival de agua parte con su burbuja (para su chorro)
-  G.phase = 'calib'; TILT.ref = null; calReset(''); $('calib').hidden = false; // antes del conteo hay que calibrar el sensor (pedido del dueño)
+  if (CTL === 'tilt') { G.phase = 'calib'; TILT.ref = null; calReset(''); $('calib').hidden = false; } // antes del conteo hay que calibrar el sensor (pedido del dueño)
+  else { G.phase = 'count'; G.cd = COUNT_S + GO_S; $('calib').hidden = true; } // con joystick no hace falta calibrar
 }
 // ----- calibrar: mantener presionado sin mover el teléfono; el promedio de lo leído queda como neutro -----
 const CAL = { on: false, t: 0, n: 0, b: 0, g: 0, first: null };
@@ -598,9 +620,9 @@ function calStep(dt) {
   h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
   h.addEventListener('contextmenu', e => e.preventDefault()); }
 function fightStart() {
-  G.phase = 'fight'; $('btnCal').hidden = false;
-  const walk = TILT.seen ? 'Inclina para caminar' : !matchMedia('(pointer: coarse)').matches ? 'Flechas para caminar' : TOUCH_WALK ? 'Círculo para caminar' : 'No llega la inclinación: permite el acceso al movimiento';
-  showTip(walk, 2600); setTimeout(() => { if (G && G.phase === 'fight') showTip('Toca: saltar · Arrastra: brazos · Mantén tu pozo o llama: escudo', 3600); }, 2900);
+  G.phase = 'fight'; $('btnCal').hidden = CTL !== 'tilt'; // «Centrar» sólo inclinando
+  const walk = CTL === 'joy' ? 'Usa la palanca de abajo para caminar' : TILT.seen ? 'Inclina para caminar' : !matchMedia('(pointer: coarse)').matches ? 'Flechas para caminar' : 'No llega la inclinación: permite el acceso al movimiento o elige Joystick en Controles';
+  showTip(walk, 2600); setTimeout(() => { if (G && G.phase === 'fight') showTip('Toca: la mano sigue tu dedo · Desliza rápido: ataca', 3600); }, 2900);
 }
 function duelStep(dt) {
   const { me, foe } = G;
@@ -1251,7 +1273,7 @@ function drawCount(ctx) { // 3, 2, 1, ¡PELEA! (cada número aparece grande y se
   ctx.restore();
 }
 function drawLevel(ctx, W, H) { // nivel de burbuja abajo: muestra hacia dónde estás inclinando (en el link de prueba es la palanca para caminar)
-  const r = TOUCH_WALK ? JOY_R : 30, x = W / 2, y = H - r - 18 - SAB;
+  const r = touchWalk() ? JOY_R : 30, x = W / 2, y = H - r - 18 - SAB;
   ctx.fillStyle = 'rgba(15,20,28,.55)'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r * 0.35, 0, TAU); ctx.stroke();
   ctx.fillStyle = G.src === 'none' ? 'rgba(255,255,255,.35)' : '#ffc861'; ctx.beginPath(); ctx.arc(x + G.inp.x * r * 0.7, y + G.inp.y * r * 0.7, 7, 0, TAU); ctx.fill();
@@ -1306,7 +1328,7 @@ function buildPick() {
     x.fillStyle = 'rgba(0,0,0,.25)'; x.beginPath(); x.ellipse(110, 196, 44, 13, 0, 0, TAU); x.fill(); m.draw(x);
     b.addEventListener('click', () => {
       // iPhone: pedir permiso para leer la inclinación (tiene que ser justo al tocar)
-      try { if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().catch(() => { }); } catch (e) { }
+      try { if (CTL === 'tilt' && typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().catch(() => { }); } catch (e) { } // sólo si se camina inclinando
       startDuel(b.dataset.el);
     });
   }
@@ -1315,6 +1337,12 @@ $('btnBack').addEventListener('click', () => { clearTouches(); scene = 'pick'; G
 $('btnCal').addEventListener('click', () => { centerTilt(); showTip('Centrado', 1200); });
 
 $('ver').textContent = 'Versión ' + VERSION;
+CTL = load().ctl || (IN_FRAME ? 'joy' : 'tilt');
+function showCtl() { for (const b of document.querySelectorAll('.ctlopt')) b.classList.toggle('on', b.dataset.ctl === CTL); $('ctlBtn').textContent = '🎮 Controles: ' + (CTL === 'joy' ? 'Joystick' : 'Inclinar'); }
+showCtl();
+$('ctlBtn').addEventListener('click', () => { showCtl(); $('ctlPanel').hidden = false; });
+for (const b of document.querySelectorAll('.ctlopt')) b.addEventListener('click', () => { CTL = b.dataset.ctl; const st = load(); st.ctl = CTL; save(st); showCtl(); });
+$('ctlDone').addEventListener('click', () => { $('ctlPanel').hidden = true; });
 layout(); buildPick(); loop();
 if ('serviceWorker' in navigator && location.protocol === 'https:' && window.top === window) navigator.serviceWorker.register('sw.js').catch(() => { });
 </script>
