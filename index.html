@@ -124,7 +124,7 @@ const SHIELD = { r: 34, block: 0.75, wear: 0.03 }; // radio, cuánto daño quita
 const THROW = { min: 260, max: 1000, dmg: 14, life: 1.4, kb: 260 }; // velocidad mínima para lanzarla y máxima, daño (la rapidez no lo cambia, pedido del dueño), segundos que vuela, empujón
 const HP_MAX = 100, KO_S = 2.6;
 // Guardar la esfera (pedido del dueño): llevarla a tu personaje y dejarla ahí un momento hace que quede flotando cerca de él; un deslizamiento rápido hacia adelante la dispara al rival
-const DOCK = { r: 30, s: 0.5, max: 3, orbX: 40, orbY: 13, fire: 760, fwd: Math.PI / 3 }; // radio del anillo de carga, segundos que la esfera tiene que tocar tu personaje, cuántas puede guardar (3), radio de la órbita a lo ancho y hacia el fondo, velocidad del disparo, cuánto puede desviarse el deslizamiento de "hacia el rival" (60°)
+const DOCK = { r: 30, s: 0.5, max: 3, side: 36, grow: 0.45, orbX: 40, orbY: 13, fire: 760, fwd: Math.PI / 3 }; // radio del anillo de carga, segundos que la esfera tiene que tocar tu personaje, cuántas puede guardar (3; el agua: 1 que crece hasta 3 veces), distancia del agua a tu costado, cuánto crece el agua cada vez, radio de la órbita a lo ancho y hacia el fondo, velocidad del disparo, cuánto puede desviarse el deslizamiento de "hacia el rival" (60°)
 // Salpicadura (pedido del dueño): arrastrar desde tu pozo o tu llama y soltar pronto (antes de `quick` s) lanza una salpicadura del elemento en esa dirección (no se controla después); también daña. Si sigues arrastrando, sale la esfera
 const SPLASH = { quick: 0.3, decide: 30, v: 900, n: 26, spread: 0.32, sp0: 540, spK: 0.15, life: 0.62, dmg: 12 }; // px que hay que arrastrar, rapidez (px/s) del deslizamiento que dispara la esfera guardada, gotas/llamas, abertura, velocidad, duración, daño (la rapidez no cambia el daño, pedido del dueño)
 const ARM_RANGE = [-15 * Math.PI / 180, 85 * Math.PI / 180]; // rango cómodo de cada brazo (desde un poco cruzado por delante hasta un poco detrás del costado); fuera de él, el cuerpo gira
@@ -668,7 +668,7 @@ function drawShield(ctx, m, T) { // esfera de agua o fuego alrededor del persona
   ctx.restore();
 }
 function hitFighter(m, o) { // la esfera lanzada golpea
-  const sp = Math.hypot(o.vx, o.vy); dealDamage(m, THROW.dmg, o.vx, o.vy); orbFx(o, 18);
+  dealDamage(m, THROW.dmg * (1 + 0.5 * ((o.lvl || 1) - 1)), o.vx, o.vy); orbFx(o, 18); // más grande, más daño
 }
 function dealDamage(m, raw, vx, vy, kbK = 1) { // daño con o sin escudo: baja según cuánto elemento tiene alrededor, y el escudo se gasta
   const o = { vx, vy }, sp = Math.hypot(vx, vy), red = SHIELD.block * m.shield, dmg = raw * (1 - red);
@@ -729,19 +729,28 @@ function orbStep(dt) {
       const w = toWorld(p.x, p.y), c = 2 * ORB.z * Math.sqrt(ORB.k);
       o.vx += ((w.x - o.x) * ORB.k - o.vx * c) * dt; o.vy += ((w.y - o.y) * ORB.k - o.vy * c) * dt;
       if (p.arm && p.arm.ctl) { p.arm.ctl.x = o.x; p.arm.ctl.y = o.y; } // la mano apunta a la esfera
-      const me = G.me, ch = me.nodes[me.ix.upper], near = Math.abs(o.x - me.gx) < BODY.torW * 0.6 * me.s + ORB.r * 0.6 && o.y > me.nodes[me.ix.head].y - BODY.head * 0.6 * me.s && o.y < me.gy + 2, /* la esfera toca a tu personaje */ full = G.orbs.filter(q => q.docked && q.owner === me).length >= DOCK.max;
+      const me = G.me, ch = me.nodes[me.ix.upper], near = Math.abs(o.x - me.gx) < BODY.torW * 0.6 * me.s + ORB.r * 0.6 && o.y > me.nodes[me.ix.head].y - BODY.head * 0.6 * me.s && o.y < me.gy + 2, /* la esfera toca a tu personaje */ mine = G.orbs.filter(q => q.docked && q.owner === me), wd = o.k === 'water' && mine.find(q => q.k === 'water'), full = o.k === 'water' ? wd && wd.lvl >= DOCK.max : mine.length >= DOCK.max; // fuego: hasta 3 orbitando; agua: una que crece hasta 3
       o.dockT = near && !full ? (o.dockT || 0) + dt : Math.max(0, (o.dockT || 0) - dt * 2); // dejarla un momento en tu personaje (no es inmediato)
-      if (o.dockT >= DOCK.s) { o.held = false; o.docked = true; o.owner = me; o.dockT = 0; p.orb = null; p.docked = true; if (p.arm) { p.arm.ctl = null; p.arm = null; } for (let i = 0; i < 10; i++) orbFx(o, 1); }
-    } else if (o.docked) { // guardada: flota cerca de tu personaje, girando despacio a la altura del pecho
-      const m = o.owner, c = m.nodes[m.ix.upper], idx = G.orbs.filter(q => q.docked && q.owner === m).indexOf(o), an = performance.now() / 1000 * 1.4 + idx * TAU / DOCK.max; // repartidas en la órbita
+      if (o.dockT >= DOCK.s) {
+        o.held = false; o.dockT = 0; p.orb = null; p.docked = true; if (p.arm) { p.arm.ctl = null; p.arm = null; }
+        if (wd) { wd.lvl++; o.life = 0; o.merged = true; for (let i = 0; i < 12; i++) orbFx(wd, 1); } // agua: se junta con la que ya tienes y la hace más grande
+        else { o.docked = true; o.owner = me; o.lvl = 1; for (let i = 0; i < 10; i++) orbFx(o, 1);
+          if (o.k === 'water') { const rx = o.x - ch.x, rz = (o.y - ch.y) / DEPTH; o.side = Math.sign(rx * Math.cos(me.ph) - rz * Math.sin(me.ph)) || 1; } } // agua: se queda en el costado donde la pusiste
+      }
+    } else if (o.docked && o.k === 'water') { // agua guardada: quieta a tu costado (el del cuerpo donde la pusiste), sin girar
+      const m = o.owner, c = m.nodes[m.ix.upper], pr = m.proj(o.side * (DOCK.side + 6 * (o.lvl - 1)), 4); o.back = pr.z < 0;
+      const tx = c.x + pr.x * m.s, ty = c.y + 2 * m.s + pr.z * DEPTH * m.s + Math.sin(o.t * 2.4) * 1.5, k = 90, cc = 2 * 0.7 * Math.sqrt(k);
+      o.vx += ((tx - o.x) * k - o.vx * cc) * dt; o.vy += ((ty - o.y) * k - o.vy * cc) * dt; o.life = 1;
+    } else if (o.docked) { // fuego guardado: orbita alrededor de tu personaje, a la altura del pecho
+      const m = o.owner, c = m.nodes[m.ix.upper], idx = G.orbs.filter(q => q.docked && q.owner === m && q.k === 'fire').indexOf(o), an = performance.now() / 1000 * 1.4 + idx * TAU / DOCK.max; // repartidas en la órbita
       o.back = Math.sin(an) < 0; // en la mitad de atrás de la órbita pasa por detrás del personaje
       const tx = c.x + Math.cos(an) * DOCK.orbX * m.s, ty = c.y - 2 * m.s + Math.sin(an) * DOCK.orbY * m.s + Math.sin(o.t * 3 + idx) * 2, k = 90, cc = 2 * 0.7 * Math.sqrt(k);
       o.vx += ((tx - o.x) * k - o.vx * cc) * dt; o.vy += ((ty - o.y) * k - o.vy * cc) * dt; o.life = 1;
     } else if (o.thrown) { // lanzada: vuela y daña al que golpea (con o sin escudo)
       o.life -= dt / THROW.life; if (o.k === 'water') o.vy += 60 * dt;
       for (const m of G.ms) { if (m === o.owner || o.life <= 0) continue;
-        const c = m.nodes[m.ix.upper], top = m.nodes[m.ix.head].y - BODY.head * 0.6 * m.s, inBody = Math.abs(o.x - m.gx) < BODY.torW * 0.6 * m.s + ORB.r * 0.6 && o.y > top && o.y < m.gy + 2;
-        const inShield = m.shield > 0.05 && Math.hypot(o.x - c.x, (o.y - c.y - 6 * m.s) / 0.92) < SHIELD.r * m.s + ORB.r * 0.5;
+        const c = m.nodes[m.ix.upper], top = m.nodes[m.ix.head].y - BODY.head * 0.6 * m.s, inBody = Math.abs(o.x - m.gx) < BODY.torW * 0.6 * m.s + orbR(o) * 0.6 && o.y > top - orbR(o) * 0.4 && o.y < m.gy + 2;
+        const inShield = m.shield > 0.05 && Math.hypot(o.x - c.x, (o.y - c.y - 6 * m.s) / 0.92) < SHIELD.r * m.s + orbR(o) * 0.5;
         if (inBody || inShield) { hitFighter(m, o); o.life = 0; } }
     } else { // suelta: el agua cae y salpica; el fuego sube un poco y se apaga
       o.held = false; o.life -= dt / ORB.fade;
@@ -756,8 +765,9 @@ function orbStep(dt) {
   for (const q of G.fx) { q.life -= dt; q.vy += q.g * dt; q.x += q.vx * dt; q.y += q.vy * dt; }
   G.fx = G.fx.filter(q => q.life > 0);
 }
+const orbR = o => ORB.r * (1 + DOCK.grow * ((o.lvl || 1) - 1)); // el agua guardada crece
 function drawOrb(ctx, o, T) {
-  const r = ORB.r * (o.held ? Math.min(1, 0.4 + o.t * 3) : 0.6 + 0.4 * o.life), sp = Math.hypot(o.vx, o.vy), ang = Math.atan2(o.vy, o.vx);
+  const r = orbR(o) * (o.held ? Math.min(1, 0.4 + o.t * 3) : 0.6 + 0.4 * o.life), sp = Math.hypot(o.vx, o.vy), ang = Math.atan2(o.vy, o.vx);
   ctx.save(); ctx.globalAlpha = o.held ? 1 : Math.max(0, o.life);
   if (o.k === 'water') { // esfera de agua: se estira hacia donde va y tiembla
     const st = 1 + Math.min(0.55, sp / 650), wob = Math.sin(T * 11 + o.x * 0.1) * 0.07;

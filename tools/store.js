@@ -23,7 +23,7 @@ const path = require('path');
   for (let n = 0; n < 3; n++) { await t('touchStart', [{ x: pool.x, y: pool.y }]); await p.waitForTimeout(60);
     for (let i = 1; i <= 15; i++) { await t('touchMove', [{ x: pool.x + (me.x - pool.x) * i / 15, y: pool.y + (me.y - pool.y) * i / 15 }]); await p.waitForTimeout(30); }
     await p.waitForTimeout(900); await t('touchEnd', []); await p.waitForTimeout(700); }
-  const maxOk = await p.evaluate(() => G.orbs.filter(o => o.docked).length);
+  const maxOk = await p.evaluate(() => { const d = G.orbs.filter(o => o.docked); return { n: d.length, lvl: d[0] && d[0].lvl, side: d[0] && d[0].side, held: G.orbs.filter(o => !o.docked && o.life > 0).length }; }); // agua: una sola que crece hasta 3
   await p.evaluate(() => { const d = G.orbs.filter(o => o.docked); G.orbs = [d[0]]; });
   // deslizar rápido hacia abajo (lejos del rival): no dispara
   await t('touchStart', [{ x: 300, y: 400 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 300, y: 400 + i * 60 }]); await p.waitForTimeout(8); } await t('touchEnd', []); await p.waitForTimeout(300);
@@ -33,10 +33,20 @@ const path = require('path');
   await t('touchStart', [{ x: 300, y: 600 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 300, y: 600 - i * 60 }]); await p.waitForTimeout(8); } await t('touchEnd', []);
   const flying = await p.evaluate(() => G.orbs.filter(o => o.thrown).length); await p.waitForTimeout(1200);
   const dmg = hp0 - await p.evaluate(() => G.foe.hp);
-  console.log({ early, docked, maxOk, still: still && still.toFixed(1), notFired, flying, dmg: dmg.toFixed(1) });
+  // fuego: hasta 3 orbitando
+  await p.evaluate(() => { document.getElementById('btnBack').click(); document.querySelector('.elbtn[data-el="fuego"]').click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.6; });
+  await p.waitForTimeout(600);
+  const fire = await p.evaluate(() => { const f = arenaProps()[0], v = view(); return { x: v.ox + f.x * v.k, y: v.oy + (TOP + f.y * DEPTH - 20) * v.k }; });
+  const me2 = await p.evaluate(() => { const v = view(), c = G.me.nodes[G.me.ix.upper]; return { x: v.ox + c.x * v.k, y: v.oy + (c.y + 4 * G.me.s) * v.k }; });
+  for (let n = 0; n < 4; n++) { await t('touchStart', [{ x: fire.x, y: fire.y }]); await p.waitForTimeout(60);
+    for (let i = 1; i <= 15; i++) { await t('touchMove', [{ x: fire.x + (me2.x - fire.x) * i / 15, y: fire.y + (me2.y - fire.y) * i / 15 }]); await p.waitForTimeout(30); }
+    await p.waitForTimeout(900); await t('touchEnd', []); await p.waitForTimeout(700); }
+  const fireN = await p.evaluate(() => G.orbs.filter(o => o.docked && o.k === 'fire').length);
+  if (fireN !== 3) errs.push('fuego: no quedaron 3 orbitando: ' + fireN);
+  console.log({ early, docked, maxOk, fireN, still: still && still.toFixed(1), notFired, flying, dmg: dmg.toFixed(1) });
   if (early !== 0) errs.push('se guardó de inmediato');
   if (docked !== 1 || !(still < 55)) errs.push('no quedó orbitando cerca del personaje');
-  if (maxOk !== 3) errs.push('el máximo no es 3: ' + maxOk);
+  if (!(maxOk.n === 1 && maxOk.lvl === 3)) errs.push('agua: no quedó una sola esfera de tamaño 3: ' + JSON.stringify(maxOk));
   if (notFired !== 1) errs.push('disparó hacia atrás');
   if (flying !== 1 || !(dmg > 5)) errs.push('no se disparó al rival');
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
