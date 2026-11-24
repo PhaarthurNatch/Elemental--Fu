@@ -111,7 +111,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.50'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.51'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -447,7 +447,8 @@ function drawArena(ctx, V) {
 
 // ----- Elementos en las esquinas (pedido del dueño): fuego arriba a la izquierda y abajo a la derecha, pozo de agua abajo a la izquierda y arriba a la derecha -----
 const FIRE_R = 22, FIRE_H = 13, POOL_R = 40;
-function arenaProps() { const W = ARENA_W, D = ARENA_D, f = FIRE_R + 34, w = POOL_R + 7 + 30; return [{ k: 'fire', x: f, y: f, r: FIRE_R }, { k: 'water', x: w, y: D - w, r: POOL_R }, { k: 'fire', x: W - f, y: D - f, r: FIRE_R }, { k: 'water', x: W - w, y: w, r: POOL_R }]; } // metidos en las esquinas (pedido del dueño): el pozo queda cortado por el muro y el borde de la arena
+function arenaProps() { const W = ARENA_W, D = ARENA_D, f = FIRE_R + 34, w = POOL_R + 7 + 30, ps = [{ k: 'fire', x: f, y: f, r: FIRE_R }, { k: 'water', x: w, y: D - w, r: POOL_R }, { k: 'fire', x: W - f, y: D - f, r: FIRE_R }, { k: 'water', x: W - w, y: w, r: POOL_R }]; return G && G.flipProps ? ps.map(p => ({ ...p, x: W - p.x })) : ps; } // metidos en las esquinas (pedido del dueño): el pozo queda cortado por el muro y el borde de la arena
+// con joystick, si eres de agua o fuego tu fuente de abajo queda del lado opuesto al joystick (pedido del dueño): si haría falta, la arena se refleja de izquierda a derecha (`G.flipProps`)
 function drawPool(ctx, p, T) { // pozo de agua: borde de piedra y agua con ondas y brillos
   const x = p.x, y = TOP + p.y * DEPTH, R = p.r, RY = R * DEPTH, rim = 7, h = 6;
   ctx.fillStyle = '#5e5850'; ctx.beginPath(); ctx.ellipse(x, y, R + rim, (R + rim) * DEPTH, 0, 0, Math.PI); ctx.lineTo(x - R - rim, y - h); ctx.ellipse(x, y - h, R + rim, (R + rim) * DEPTH, 0, Math.PI, 0, true); ctx.closePath(); ctx.fill(); // costado del borde
@@ -603,7 +604,7 @@ function startDuel(el) {
   const foe = new Fighter(fel, SKINS[Math.floor(Math.random() * SKINS.length)], 'Rival');
   me.isMe = true; me.x = ARENA_W * 0.5; me.y = ARENA_D * 0.75; foe.x = ARENA_W * 0.5; foe.y = ARENA_D * 0.25;
   foe.home = { x: foe.x, y: foe.y }; foe.wait = 1.5; foe.goal = null;
-  G = { foeTest: FOE_TEST, ms: [me, foe], me, foe, dust: [], orbs: [], fx: [], flow: [], splashes: [], beams: [], trails: [], texts: [], inp: { x: 0, y: 0 }, t: 0 };
+  G = { foeTest: FOE_TEST, flipProps: CTL === 'joy' && ((el === 'agua' && HAND === 'der') || (el === 'fuego' && HAND === 'izq')), ms: [me, foe], me, foe, dust: [], orbs: [], fx: [], flow: [], splashes: [], beams: [], trails: [], texts: [], inp: { x: 0, y: 0 }, t: 0 };
   $('fighters').innerHTML = G.ms.map((m, i) => `<div class="fcard${m.isMe ? ' me' : ''}"><div class="nm"><span class="chip" id="chip${i}" style="background:${m.E.robe}"></span>${m.name}</div><div class="el" id="el${i}">${m.E.n}</div><div class="hpb"><i id="hp${i}"></i></div><div class="shb"><i id="sh${i}" style="background:${m.E.trim}"></i></div></div>`).join('');
   $('pick').hidden = true; $('hud').hidden = false; $('btnCal').hidden = true; scene = 'duel';
   me.ph = me.phT = Math.atan2(foe.x - me.x, foe.y - me.y); foe.ph = foe.phT = Math.atan2(me.x - foe.x, me.y - foe.y); me.guard = me.guardK = foe.guard = foe.guardK = 1;

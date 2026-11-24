@@ -106,6 +106,12 @@ const { chromium, devices } = require('playwright');
   if (!(der.x < der.W / 2 && izq.x > izq.W / 2)) errs.push('el joystick no quedó del lado correcto (diestro: izquierda, zurdo: derecha)');
   if (der.over || izq.over) errs.push('el joystick tapa una fuente');
   if (!der.above || !izq.above) errs.push('el joystick no quedó encima de la fuente de su lado');
+  // con joystick, tu fuente de abajo (agua o fuego) queda del lado opuesto al joystick
+  const opp = async (el, hand) => p.evaluate(([el, hand]) => { document.querySelector('#btnBack').click(); CTL = 'joy'; HAND = hand; document.querySelector(`.elbtn[data-el="${el}"]`).click(); G.foeTest = false;
+    const k = el === 'agua' ? 'water' : 'fire', mine = arenaProps().filter(q => q.k === k).sort((a, b) => b.y - a.y)[0], v = view(), j = joyCenter(); return (v.ox + mine.x * v.k < W / 2) !== (j.x < W / 2); }, [el, hand]);
+  const oppOk = [await opp('agua', 'der'), await opp('agua', 'izq'), await opp('fuego', 'der'), await opp('fuego', 'izq')];
+  console.log({ oppOk });
+  if (oppOk.some(x => !x)) errs.push('la fuente de tu elemento no quedó del lado opuesto al joystick: ' + oppOk);
   await p.evaluate(() => { HAND = 'der'; const st = load(); delete st.ctl; delete st.hand; save(st); });
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();
