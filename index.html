@@ -45,6 +45,20 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 .logo .el4{background-image:linear-gradient(90deg,#4aa6ea 0 25%,#5cc266 25% 50%,#ff6a4a 50% 75%,#ffbb3a 75%)} /* los cuatro elementos */
 .logo .fu{background-image:linear-gradient(180deg,#fff3c4,#ffc861 50%,#ff6a2a);font-size:1.12em}
 #ver{position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:0;right:0;text-align:center;color:var(--muted);font-weight:800;font-size:13px;letter-spacing:.5px;opacity:.85}
+#netPanel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(12,17,24,.78);z-index:5}
+#netPanel .box{width:100%;max-width:360px;background:var(--panel);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 4px 0 rgba(0,0,0,.45)}
+#netPanel h2{margin:0;font-size:22px;text-align:center}
+.netels{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.netels button{height:40px;border-radius:12px;background:var(--panel2);font-weight:800;font-size:13px;border:3px solid transparent}
+.netels button.on{border-color:var(--acc)}
+.netbig{height:44px;border-radius:14px;background:var(--acc);color:#1b1407;font-weight:900;font-size:16px;padding:0 14px}
+.netcode{text-align:center;font-weight:900;font-size:34px;letter-spacing:8px;color:var(--acc);min-height:8px}
+.netjoin{display:flex;gap:8px}
+.netjoin input{flex:1;min-width:0;height:44px;border-radius:14px;border:0;background:var(--panel2);color:var(--text);font:inherit;font-weight:900;font-size:20px;letter-spacing:6px;text-align:center;text-transform:uppercase}
+#netMsg{margin:0;min-height:20px;text-align:center;color:var(--muted);font-weight:700}
+#netCancel{height:40px;border-radius:12px;background:var(--panel2);font-weight:800}
+.pickbtns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#netBtn{margin-top:6px;height:44px;padding:0 18px;border-radius:14px;background:var(--panel);font-weight:800;font-size:15px;box-shadow:0 3px 0 rgba(0,0,0,.4)}
 #ctlBtn{margin-top:6px;height:44px;padding:0 18px;border-radius:14px;background:var(--panel);font-weight:800;font-size:15px;box-shadow:0 3px 0 rgba(0,0,0,.4)}
 #ctlBtn:active{transform:translateY(2px)}
 #ctlPanel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(12,17,24,.78);z-index:5}
@@ -92,6 +106,18 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
   <button id="calHold"><span>Mantén<br>presionado</span></button>
   <p id="calMsg"></p>
 </div>
+<div id="netPanel" hidden>
+  <div class="box">
+    <h2>Jugar online</h2>
+    <small class="handnote">Los dos teléfonos se conectan directo entre sí; Firebase sólo se usa un momento para encontrarse.</small>
+    <div class="netels" id="netEls"></div>
+    <button class="netbig" id="netCreate">Crear sala</button>
+    <div class="netcode" id="netCode"></div>
+    <div class="netjoin"><input id="netIn" maxlength="4" placeholder="CÓDIGO" autocomplete="off" autocapitalize="characters"><button class="netbig" id="netJoin">Unirme</button></div>
+    <p id="netMsg"></p>
+    <button id="netCancel">Cancelar</button>
+  </div>
+</div>
 <div id="ctlPanel" hidden>
   <div class="box">
     <h2>Controles</h2>
@@ -107,11 +133,11 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
   <h1 class="logo" aria-label="Elemental-Fu"><span class="el4">Elemental</span><span class="fu">-Fu</span></h1>
   <p>Elige tu elemento</p>
   <div class="elgrid" id="elGrid"></div>
-  <button id="ctlBtn">🎮 Controles</button>
+  <div class="pickbtns"><button id="ctlBtn">🎮 Controles</button><button id="netBtn">🌐 Jugar online</button></div>
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.51'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.53'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -597,22 +623,130 @@ function readInput() {
 // ============================================================================
 let G = null, scene = 'pick';
 function place(m) { m.s = 0.82 + 0.28 * (m.y / ARENA_D); m.gx = m.x; m.gy = TOP + m.y * DEPTH; }
-function startDuel(el) {
-  const st = load(); st.el = el; save(st);
-  const others = EL_KEYS.filter(k => k !== el && BEAM_K[k]), fel = others[Math.floor(Math.random() * others.length)]; // el rival es de un elemento que ya tiene ataque (tierra todavía no)
-  const me = new Fighter(el, SKINS[Math.floor(Math.random() * SKINS.length)], 'Tú');
-  const foe = new Fighter(fel, SKINS[Math.floor(Math.random() * SKINS.length)], 'Rival');
+function startDuel(el, net = null) { // net: pelea online (el elemento y el color del rival vienen de su teléfono)
+  const st = load(); st.el = el; save(st); if (NET.on) ARENA_D = NET_D;
+  const others = EL_KEYS.filter(k => k !== el && BEAM_K[k]), fel = net ? net.foeEl : others[Math.floor(Math.random() * others.length)]; // el rival es de un elemento que ya tiene ataque (tierra todavía no)
+  const me = new Fighter(el, SKINS[net ? net.mySkin : Math.floor(Math.random() * SKINS.length)], 'Tú');
+  const foe = new Fighter(fel, SKINS[net ? net.foeSkin : Math.floor(Math.random() * SKINS.length)], 'Rival');
   me.isMe = true; me.x = ARENA_W * 0.5; me.y = ARENA_D * 0.75; foe.x = ARENA_W * 0.5; foe.y = ARENA_D * 0.25;
   foe.home = { x: foe.x, y: foe.y }; foe.wait = 1.5; foe.goal = null;
-  G = { foeTest: FOE_TEST, flipProps: CTL === 'joy' && ((el === 'agua' && HAND === 'der') || (el === 'fuego' && HAND === 'izq')), ms: [me, foe], me, foe, dust: [], orbs: [], fx: [], flow: [], splashes: [], beams: [], trails: [], texts: [], inp: { x: 0, y: 0 }, t: 0 };
+  G = { round: 0, foeTest: FOE_TEST && !NET.on, flipProps: !NET.on && CTL === 'joy' && ((el === 'agua' && HAND === 'der') || (el === 'fuego' && HAND === 'izq')), ms: [me, foe], me, foe, dust: [], orbs: [], fx: [], flow: [], splashes: [], beams: [], trails: [], texts: [], inp: { x: 0, y: 0 }, t: 0 };
   $('fighters').innerHTML = G.ms.map((m, i) => `<div class="fcard${m.isMe ? ' me' : ''}"><div class="nm"><span class="chip" id="chip${i}" style="background:${m.E.robe}"></span>${m.name}</div><div class="el" id="el${i}">${m.E.n}</div><div class="hpb"><i id="hp${i}"></i></div><div class="shb"><i id="sh${i}" style="background:${m.E.trim}"></i></div></div>`).join('');
   $('pick').hidden = true; $('hud').hidden = false; $('btnCal').hidden = true; scene = 'duel';
   me.ph = me.phT = Math.atan2(foe.x - me.x, foe.y - me.y); foe.ph = foe.phT = Math.atan2(me.x - foe.x, me.y - foe.y); me.guard = me.guardK = foe.guard = foe.guardK = 1;
   layout(); for (const m of G.ms) { place(m); m.resetRig(); for (let i = 0; i < 30; i++) m.step(1 / 60); }
-  if (foe.el === 'agua' && !G.foeTest) giveBubble(foe, 2); // el rival de agua parte con su burbuja (para su chorro)
+  if (foe.el === 'agua' && !G.foeTest && !NET.on) giveBubble(foe, 2); // el rival de agua parte con su burbuja (para su chorro)
   if (CTL === 'tilt') { G.phase = 'calib'; TILT.ref = null; calReset(''); $('calib').hidden = false; } // antes del conteo hay que calibrar el sensor (pedido del dueño)
-  else { G.phase = 'count'; G.cd = COUNT_S + GO_S; $('calib').hidden = true; } // con joystick no hace falta calibrar
+  else { $('calib').hidden = true; if (NET.on) netReady(); else { G.phase = 'count'; G.cd = COUNT_S + GO_S; } } // con joystick no hace falta calibrar
 }
+// ============================================================================
+// ONLINE (pedido del dueño): los dos celulares se conectan directo entre sí (WebRTC); Firebase (Firestore) sólo se usa
+// un momento para intercambiar los datos de conexión al crear o unirse a una sala, y después ya no se usa.
+// ============================================================================
+const FIREBASE = { apiKey: 'AIzaSyDUaFYm2rd2rfKHyv2qiLxmvtTvTvo1UqU', projectId: 'elemental-fu-ed205' }; // configuración web del proyecto Firebase del dueño (Consola → Configuración del proyecto → Tus apps)
+const NET_D = 820; // en línea la arena tiene el mismo largo en los dos teléfonos
+const NET = { on: false, guest: false, pc: null, g: null, s: null, code: '', started: false, ready: false, remoteReady: false, rs: null, mir: new Map(), rb: new Map(), gone: new Set(), seq: 0, sendT: 0, el: 'fuego', skin: 0 };
+const fsURL = code => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/elementalfu_rooms/${code}?key=${FIREBASE.apiKey}`;
+const SIGNAL = { // intercambio de datos de conexión: un documento por sala en Firestore (se borra al conectarse)
+  async put(code, fields) { const mask = Object.keys(fields).map(k => 'updateMask.fieldPaths=' + k).join('&'), body = { fields: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, { stringValue: String(v) }])) };
+    const r = await fetch(fsURL(code) + '&' + mask, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!r.ok) throw new Error('Firebase ' + r.status); },
+  async get(code) { const r = await fetch(fsURL(code)); if (r.status === 404) return null; if (!r.ok) throw new Error('Firebase ' + r.status); const j = await r.json(); return Object.fromEntries(Object.entries(j.fields || {}).map(([k, v]) => [k, v.stringValue])); },
+  async del(code) { try { await fetch(fsURL(code), { method: 'DELETE' }); } catch (e) { } },
+};
+// el que se une ve la arena girada media vuelta (cada uno se ve abajo): las posiciones se traducen al enviar y al recibir
+const nx = x => NET.guest ? ARENA_W - x : x, nay = y => NET.guest ? ARENA_D - y : y, ndy = y => NET.guest ? 2 * TOP + ARENA_D * DEPTH - y : y, nv = v => NET.guest ? -v : v, nang = a => NET.guest ? a + Math.PI : a;
+const netStatus = t => { $('netMsg').textContent = t; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const netSend = (ch, m) => { try { if (ch && ch.readyState === 'open') ch.send(JSON.stringify(m)); } catch (e) { } };
+function newPC() {
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] });
+  pc.onconnectionstatechange = () => { if (['failed', 'disconnected', 'closed'].includes(pc.connectionState) && NET.pc === pc) netLost(); };
+  return pc;
+}
+function iceDone(pc) { return new Promise(r => { if (pc.iceGatheringState === 'complete') return r(); const t = setTimeout(r, 3000); pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); r(); } }); }); } // todos los datos de conexión de una vez: así Firebase se usa sólo un momento
+function netHook(ch) {
+  if (ch.label === 's') NET.s = ch; else NET.g = ch;
+  ch.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (_) { return; } netMsg(m); };
+  ch.onopen = () => { if (NET.g && NET.g.readyState === 'open') { netStatus('¡Conectado!'); netSend(NET.g, { t: 'hello', el: NET.el, skin: NET.skin }); } };
+}
+const roomCode = () => Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random() * 24 | 0]).join('');
+const fbReady = () => FIREBASE.apiKey && FIREBASE.projectId;
+async function netCreate() {
+  if (!fbReady()) return netStatus('Falta la configuración de Firebase.');
+  netClose(); const pc = NET.pc = newPC(); NET.guest = false; NET.on = true;
+  netHook(pc.createDataChannel('g')); netHook(pc.createDataChannel('s', { ordered: false, maxRetransmits: 0 }));
+  netStatus('Preparando la sala…');
+  try {
+    await pc.setLocalDescription(await pc.createOffer()); await iceDone(pc);
+    const code = NET.code = roomCode(); await SIGNAL.put(code, { offer: pc.localDescription.sdp, t: Date.now() });
+    $('netCode').textContent = code; netStatus('Comparte el código. Esperando rival…');
+    for (let i = 0; i < 100 && NET.pc === pc; i++) { await sleep(1500); const d = await SIGNAL.get(code); if (d && d.answer) { await pc.setRemoteDescription({ type: 'answer', sdp: d.answer }); SIGNAL.del(code); netStatus('Conectando…'); return; } }
+    if (NET.pc === pc) { netStatus('Nadie se unió. Crea otra sala.'); SIGNAL.del(code); }
+  } catch (e) { netStatus('No se pudo crear la sala (' + e.message + ').'); }
+}
+async function netJoin(code) {
+  if (!fbReady()) return netStatus('Falta la configuración de Firebase.');
+  code = (code || '').toUpperCase().replace(/[^A-Z]/g, ''); if (code.length !== 4) return netStatus('El código tiene 4 letras.');
+  netClose(); netStatus('Buscando la sala…');
+  try {
+    const d = await SIGNAL.get(code); if (!d || !d.offer) return netStatus('No existe esa sala.'); if (d.answer) return netStatus('Esa sala ya tiene rival.');
+    const pc = NET.pc = newPC(); NET.guest = true; NET.on = true; NET.code = code; pc.ondatachannel = e => netHook(e.channel);
+    await pc.setRemoteDescription({ type: 'offer', sdp: d.offer }); await pc.setLocalDescription(await pc.createAnswer()); await iceDone(pc);
+    await SIGNAL.put(code, { answer: pc.localDescription.sdp }); netStatus('Conectando…');
+  } catch (e) { netStatus('No se pudo unir (' + e.message + ').'); }
+}
+function netClose() { const pc = NET.pc; NET.pc = null; if (pc) { netSend(NET.g, { t: 'bye' }); try { pc.close(); } catch (e) { } } NET.g = NET.s = null; NET.on = false; NET.started = false; NET.ready = NET.remoteReady = false; NET.rs = null; NET.mir.clear(); NET.rb.clear(); NET.gone.clear(); }
+function netLost() { if (!NET.on) return; const inDuel = NET.started && scene === 'duel'; netClose(); if (inDuel) { showTip('Se desconectó el rival', 3000); setTimeout(() => { if (scene === 'duel' && !NET.on) $('btnBack').click(); }, 1500); } else netStatus('Se cortó la conexión.'); }
+function netMsg(m) {
+  if (m.t === 'hello') { if (!NET.started) { NET.started = true; $('netPanel').hidden = true; startDuel(NET.el, { foeEl: m.el, foeSkin: m.skin, mySkin: NET.skin }); } }
+  else if (m.t === 'ready') NET.remoteReady = true;
+  else if (m.t === 's') NET.rs = m;
+  else if (m.t === 'bye') netLost();
+  else if (!G || !NET.started) return;
+  else if (m.t === 'launch') netLaunch(m);
+  else if (m.t === 'splash') spawnSplash({ k: m.k }, nv(m.ux), nv(m.uy), m.v, G.foe, { x: nx(m.x), y: ndy(m.y) });
+  else if (m.t === 'punch') { const me = G.me; dealDamage(me, PUNCH.dmg, nv(m.dx) * 300, nv(m.dy) * DEPTH * 300, PUNCH.kb); fxPush({ k: 'pow', x: me.nodes[me.ix.upper].x, y: me.nodes[me.ix.upper].y, vx: 0, vy: 0, g: 0, life: 0.25, r: 4, grow: 70 }); }
+}
+const netId = o => o.nid || (o.nid = (NET.guest ? 'g' : 'h') + (++NET.seq));
+function netOrbMsg(o) { return { t: 'launch', id: netId(o), k: o.k, x: nx(o.x), y: ndy(o.y), vx: nv(o.vx), vy: nv(o.vy), lvl: o.lvl || 1, size: o.size || 1, shape: o.shape, big: !!o.big, rot: o.rot || 0, weak: !!o.weak }; }
+function netLaunch(m) { // el rival lanzó algo: aparece aquí y vuela igual (lo que te golpea, lo cuentas tú)
+  const foe = G.foe; let o = NET.mir.get(m.id); NET.mir.delete(m.id); NET.gone.add(m.id);
+  if (!o) { o = newOrb(m.k, nx(m.x), ndy(m.y)); G.orbs.push(o); }
+  Object.assign(o, { net: false, nid: m.id, owner: foe, x: nx(m.x), y: ndy(m.y), lvl: m.lvl, size: m.size, shape: m.shape || o.shape, big: m.big, rot: m.rot, weak: m.weak, dmgK: m.weak ? 0.5 : 1, held: false, docked: false, surf: false, dead: false, life: 1 });
+  if (m.big) { o.hp = 1; o.heat = o.heat || 0; throwBig(o, nv(m.vx), nv(m.vy), foe); } else launch(o, nv(m.vx), nv(m.vy), foe);
+}
+function netState() { // lo tuyo, 20 veces por segundo: posición, brazos, lo que tienes en la mano o guardado y tus llamaradas
+  const me = G.me, mine = G.orbs.filter(o => !o.net && !o.dead && o.life > 0 && !o.thrown && (o.owner === me || (!o.owner && o.held)) && (o.held || o.docked || o.surf || o.raised));
+  return { t: 's', r: G.round, x: nx(me.x), y: nay(me.y), vx: nv(me.vx), vy: nv(me.vy), wv: nv(me.wantVx || 0), z: me.z, a: nang(me.ph), hp: me.hp, sh: me.shield,
+    arms: me.ix.arms.map(a => a.ctl && a.ctl.abs ? [nx(a.ctl.x), ndy(a.ctl.y), a.ctl.reach ? 1 : 0, a.ctl.punch ? 1 : 0] : 0),
+    orbs: mine.map(o => [netId(o), o.k, nx(o.x), ndy(o.y), o.lvl || 1, (o.held ? 1 : 0) | (o.docked ? 2 : 0) | (o.surf ? 4 : 0) | (o.big ? 8 : 0), o.size || 1, nang(o.rot || 0), o.k === 'earth' ? o.shape : 0, o.side || 0, o.gy != null ? ndy(o.gy) : 0]),
+    beams: G.beams.filter(b => b.on && b.owner === me).map(b => [netId(b), b.k, nang(b.aim), nx(b.ox), ndy(b.oy), b.I]) };
+}
+function netApply(dt) { // el rival: lo que mandó su teléfono
+  const s = NET.rs, foe = G.foe; if (!s) return;
+  const k = Math.min(1, dt * 12);
+  const tx = nx(s.x), ty = nay(s.y); foe.x += (tx - foe.x) * k; foe.y += (ty - foe.y) * k; foe.vx = nv(s.vx); foe.vy = nv(s.vy); foe.wantVx = nv(s.wv); foe.z = s.z; foe.phT = nang(s.a);
+  if (s.r === G.round) { foe.hp = s.hp; } foe.shield = s.sh;
+  foe.ix.arms.forEach((a, i) => { const c = s.arms[i]; a.ctl = c ? { abs: true, x: nx(c[0]), y: ndy(c[1]), reach: !!c[2], punch: !!c[3] } : null; });
+  const seen = new Set();
+  for (const e of s.orbs) { const [id, kk, x, y, lvl, fl, size, rot, shape, side, gy] = e; if (NET.gone.has(id)) continue; seen.add(id);
+    let o = NET.mir.get(id); if (o && o.dead) { NET.gone.add(id); NET.mir.delete(id); continue; } /* aquí se deshizo al chocar */ if (!o) { o = newOrb(kk, nx(x), ndy(y)); o.net = true; o.nid = id; o.owner = foe; o.hp = 1; o.heat = 0; G.orbs.push(o); NET.mir.set(id, o); }
+    Object.assign(o, { tx: nx(x), ty: ndy(y), lvl, lvlS: lvl, held: !!(fl & 1), docked: !!(fl & 2), surf: !!(fl & 4), big: !!(fl & 8), size, rot: nang(rot), side, rise: 1, life: 1 }); if (shape) o.shape = shape; if (gy) o.gy = ndy(gy); }
+  for (const [id, o] of NET.mir) if (!seen.has(id)) { o.life = 0; o.dead = true; NET.mir.delete(id); }
+  foe.surf = [...NET.mir.values()].find(o => o.surf) || null;
+  const seenB = new Set();
+  for (const e of s.beams) { const [id, kk, aim, ox, oy, I] = e; seenB.add(id); let b = NET.rb.get(id);
+    if (!b) { b = { k: kk, owner: foe, net: true, on: true, parts: [], acc: 0, seq: 0, pend: new Map(), tick: 0, t0: performance.now(), I: 1 }; G.beams.push(b); NET.rb.set(id, b); }
+    Object.assign(b, { aim: nang(aim), ox: nx(ox), oy: ndy(oy), I, on: true }); }
+  for (const [id, b] of NET.rb) if (!seenB.has(id)) { b.on = false; NET.rb.delete(id); }
+}
+function netStep(dt) {
+  if (!NET.on || !NET.started || !G) return;
+  if (G.phase === 'wait' && NET.remoteReady) { G.phase = 'count'; G.cd = COUNT_S + GO_S; }
+  netApply(dt);
+  if ((NET.sendT -= dt) <= 0) { NET.sendT = 0.05; netSend(NET.s, netState()); }
+}
+function netReady() { G.phase = 'wait'; NET.ready = true; netSend(NET.g, { t: 'ready' }); showTip('Esperando al rival…', 2500); } // los dos parten el conteo juntos
 // ----- calibrar: mantener presionado sin mover el teléfono; el promedio de lo leído queda como neutro -----
 const CAL = { on: false, t: 0, n: 0, b: 0, g: 0, first: null };
 function calReset(msg) { CAL.on = false; CAL.t = CAL.n = CAL.b = CAL.g = 0; CAL.first = null; $('calHold').style.setProperty('--p', 0); $('calHold').classList.remove('on'); $('calMsg').textContent = msg; }
@@ -626,7 +760,7 @@ function calStep(dt) {
   CAL.t += dt; $('calHold').style.setProperty('--p', Math.min(1, CAL.t / CAL_S));
   if (CAL.t >= CAL_S) { // listo: el promedio es la posición neutra
     TILT.ref = CAL.n ? { b: CAL.b / CAL.n, g: CAL.g / CAL.n } : TILT.raw ? { ...TILT.raw } : null; TILT.needRef = false;
-    CAL.on = false; $('calib').hidden = true; G.phase = 'count'; G.cd = COUNT_S + GO_S;
+    CAL.on = false; $('calib').hidden = true; if (NET.on) netReady(); else { G.phase = 'count'; G.cd = COUNT_S + GO_S; }
   }
 }
 { const h = $('calHold');
@@ -643,10 +777,12 @@ function duelStep(dt) {
   const { me, foe } = G;
   if (G.phase === 'calib') calStep(dt);
   if (G.phase === 'count') { G.cd -= dt; if (G.cd <= 0) fightStart(); }
+  netStep(dt); // online: lo que manda el rival y lo que le mandas
   const fight = G.phase === 'fight', raw = fight ? readInput() : { x: 0, y: 0, src: G.src || 'none' }, k = Math.min(1, dt * 10); G.inp.x += (raw.x - G.inp.x) * k; G.inp.y += (raw.y - G.inp.y) * k; G.src = raw.src;
   // tú: caminas hacia donde inclinas
   const a = Math.min(1, dt * 9); // responde más rápido (acompaña la mayor velocidad)
   const ws = WALK_SPEED * (me.surf ? SURF.speed : 1); me.wantVx = G.inp.x * ws; me.vx += (G.inp.x * ws - me.vx) * a; me.vy += (G.inp.y * ws - me.vy) * a; // surfeando va más rápido
+  if (!NET.on) { // rival de la máquina (online lo mueve el otro teléfono)
   // rival: pasea cerca de su lugar y se aparta si te acercas mucho
   if (fight) foe.wait -= dt;
   if (!foe.goal && foe.wait <= 0) { const an = Math.random() * TAU, d = 30 + Math.random() * 70; foe.goal = { x: clamp(foe.home.x + Math.cos(an) * d, 40, ARENA_W - 40), y: clamp(foe.home.y + Math.sin(an) * d, 40, ARENA_D - 40) }; }
@@ -654,6 +790,7 @@ function duelStep(dt) {
   if (foe.goal) { const dx = foe.goal.x - foe.x, dy = foe.goal.y - foe.y, d = Math.hypot(dx, dy); if (d < 6) { foe.goal = null; foe.wait = 1 + Math.random() * 2.5; } else { fvx = dx / d * 60; fvy = dy / d * 60; } }
   { const dx = foe.x - me.x, dy = foe.y - me.y, d = Math.hypot(dx, dy) || 1; if (d < 70) { fvx += dx / d * 70 * (1 - d / 70) * 1.5; fvy += dy / d * 70 * (1 - d / 70) * 1.5; foe.home = { x: clamp(foe.x, 60, ARENA_W - 60), y: clamp(foe.y, 60, ARENA_D - 60) }; } }
   foe.wantVx = fvx; foe.vx += (fvx - foe.vx) * Math.min(1, dt * 5); foe.vy += (fvy - foe.vy) * Math.min(1, dt * 5);
+  }
   for (const m of G.ms) {
     m.x += m.vx * dt; m.y += m.vy * dt;
     if (m.x < m.r) { m.x = m.r; m.vx = Math.max(0, m.vx); } if (m.x > ARENA_W - m.r) { m.x = ARENA_W - m.r; m.vx = Math.min(0, m.vx); }
@@ -663,7 +800,7 @@ function duelStep(dt) {
   }
   for (const m of G.ms) for (const o of arenaProps()) { if (o.k === 'fire' && m.z > FIRE_H + 4) continue; const dx = m.x - o.x, dy = m.y - o.y, d = Math.hypot(dx, dy) || 1e-3, mn = o.r + (o.k === 'water' ? 6 : 0) + m.r * 0.7; if (d < mn) { m.x = o.x + dx / d * mn; m.y = o.y + dy / d * mn; const vn = (m.vx * dx + m.vy * dy) / d; if (vn < 0) { m.vx -= vn * dx / d; m.vy -= vn * dy / d; } } } // no se atraviesan el fuego ni el pozo (el fuego se puede saltar)
   { const dx = foe.x - me.x, dy = foe.y - me.y, d = Math.hypot(dx, dy) || 1e-3, mn = me.r + foe.r; if (d < mn) { const p = (mn - d) / 2, ux = dx / d, uy = dy / d; me.x -= ux * p; me.y -= uy * p; foe.x += ux * p; foe.y += uy * p; } } // no se atraviesan
-  for (const m of G.ms) { const o = m === me ? foe : me, dx = o.x - m.x, dy = o.y - m.y; if (Math.hypot(dx, dy) > 4) m.phT = Math.atan2(dx, dy); m.phT += touchTurn(m, m.phT); m.guard = 1; } // siempre se miran entre sí (de frente, de lado, de espaldas o entremedio), salvo que un brazo necesite girar el cuerpo
+  for (const m of G.ms) { m.guard = 1; if (NET.on && m === foe) continue; const o = m === me ? foe : me, dx = o.x - m.x, dy = o.y - m.y; if (Math.hypot(dx, dy) > 4) m.phT = Math.atan2(dx, dy); m.phT += touchTurn(m, m.phT); } // online, hacia dónde mira el rival lo manda su teléfono // siempre se miran entre sí (de frente, de lado, de espaldas o entremedio), salvo que un brazo necesite girar el cuerpo
   me.charge = 0; // ya no se salta tocando la pantalla (pedido del dueño)
   for (const m of G.ms) if (m.slide > 0) { m.slide -= dt; const sp = Math.hypot(m.vx, m.vy); if (m.z === 0 && sp > 30 && Math.random() < dt * 30) G.dust.push({ x: m.x + (Math.random() - 0.5) * 16, y: m.y, z: 1, vx: -m.vx * 0.25, life: 0.55, r: 3 + Math.random() * 2.5 }); } // los pies se deslizan levantando tierra
   for (const m of G.ms) if (!m.surf && m.air(dt)) for (let i = 0; i < 6; i++) G.dust.push({ x: m.x + (Math.random() - 0.5) * 22, y: m.y + (Math.random() - 0.5) * 6, z: 1, vx: (Math.random() - 0.5) * 60, life: 0.5, r: 3 + Math.random() * 2 }); // polvo al caer
@@ -755,6 +892,7 @@ function hitFighter(m, o) { // la esfera lanzada golpea
   dealDamage(m, THROW.dmg * (1 + 0.5 * ((o.lvl || 1) - 1)) * fade * (o.dmgK || 1), o.vx, o.vy, (o.k === 'air' ? 1.6 : o.k === 'water' ? 1.1 : o.k === 'earth' ? 1 : 0.6) * fade); orbFx(o, 18); // más grande, más daño
 }
 function dealDamage(m, raw, vx, vy, kbK = 1) { // daño con o sin escudo: baja según cuánto elemento tiene alrededor, y el escudo se gasta
+  if (NET.on && m === G.foe) { const hd = m.nodes[m.ix.head]; G.texts.push({ x: hd.x, y: hd.y - 16, str: '-' + Math.max(1, Math.round(raw * (1 - SHIELD.block * m.shield))), col: '#ffe07a', life: 1 }); return; } // online: la vida del rival la cuenta su teléfono
   const o = { vx, vy }, sp = Math.hypot(vx, vy), red = SHIELD.block * m.shield, dmg = raw * (1 - red);
   m.shield = Math.max(0, m.shield - raw * SHIELD.wear); m.hp = Math.max(0, m.hp - dmg);
   const dx = o.vx / (sp || 1), dy = o.vy / DEPTH / (sp || 1), L = Math.hypot(dx, dy) || 1, kb = THROW.kb * kbK * (1 - 0.6 * red);
@@ -763,12 +901,13 @@ function dealDamage(m, raw, vx, vy, kbK = 1) { // daño con o sin escudo: baja s
   const hd = m.nodes[m.ix.head]; G.texts.push({ x: hd.x, y: hd.y - 16, str: '-' + Math.max(1, Math.round(dmg)), col: red > 0.05 ? '#bfe6ff' : '#ffe07a', life: 1 });
   if (red > 0.05) G.texts.push({ x: hd.x, y: hd.y - 32, str: 'escudo −' + Math.round(red * 100) + '%', col: '#e8f6ff', life: 1, small: true });
 }
-function spawnSplash(pr, ux, uy, v, owner) { // salpicadura: un abanico de gotas o llamas que sale del pozo o la llama hacia donde deslizaste
-  const st = propTop(pr), sp = SPLASH.sp0 + Math.min(v, 2500) * SPLASH.spK, a0 = Math.atan2(uy, ux), parts = [];
+function spawnSplash(pr, ux, uy, v, owner, st0 = null) { // salpicadura: un abanico de gotas o llamas que sale del pozo o la llama hacia donde deslizaste
+  const st = st0 || propTop(pr), sp = SPLASH.sp0 + Math.min(v, 2500) * SPLASH.spK, a0 = Math.atan2(uy, ux), parts = [];
   for (let i = 0; i < SPLASH.n; i++) { const a = a0 + (Math.random() + Math.random() - 1) * SPLASH.spread, s2 = sp * (0.7 + Math.random() * 0.45);
     parts.push({ x: st.x + (Math.random() - 0.5) * 8, y: st.y + (Math.random() - 0.5) * 6, vx: Math.cos(a) * s2, vy: Math.sin(a) * s2, life: SPLASH.life * (pr.k === 'water' ? 1.15 : 0.85) * (0.75 + Math.random() * 0.5) /* el agua llega más lejos que el fuego */, r: pr.k === 'water' ? 3 + Math.random() * 3.5 : 3.5 + Math.random() * 3, max: 0 }); }
   for (const q of parts) q.max = q.life;
   G.splashes.push({ k: pr.k, owner, hit: new Set(), dmg: SPLASH.dmg, parts });
+  if (NET.on && owner === G.me) netSend(NET.g, { t: 'splash', k: pr.k, x: nx(st.x), y: ndy(st.y), ux: nv(ux), uy: nv(uy), v });
   const a = owner.ix.arms.find(x => x.ctl && x.ctl.abs); if (a) { a.ctl.x = st.x + ux * 70; a.ctl.y = st.y + uy * 70; } // el brazo acompaña el gesto
 }
 function splashStep(dt) {
@@ -802,7 +941,7 @@ function punch(p, me, foe) { // golpe de puño: el brazo se estira hacia el pech
   const now = performance.now(), c1 = foe.nodes[foe.ix.upper], a = p.arm || pickArm(p.x, p.y); p.fired = true; me.punchT = now;
   if (a) { p.arm = a; p.moved = true; a.ctl = { abs: true, punch: true, x: c1.x, y: c1.y + 2 * foe.s }; a.relAt = now + PUNCH.t * 1000; }
   const dx = foe.x - me.x, dy = foe.y - me.y, d = Math.hypot(dx, dy) || 1; me.vx += dx / d * PUNCH.lunge; me.vy += dy / d * PUNCH.lunge; // se lanza un poco hacia él
-  dealDamage(foe, PUNCH.dmg, dx / d * 300, dy / d * DEPTH * 300, PUNCH.kb);
+  dealDamage(foe, PUNCH.dmg, dx / d * 300, dy / d * DEPTH * 300, PUNCH.kb); if (NET.on) netSend(NET.g, { t: 'punch', dx: nv(dx / d), dy: nv(dy / d) });
   const hx = (me.nodes[me.ix.upper].x + c1.x) / 2 * 0.3 + c1.x * 0.7, hy = c1.y + 2 * foe.s;
   fxPush({ k: 'pow', x: hx, y: hy, vx: 0, vy: 0, g: 0, life: 0.25, r: 4, grow: 70 }); for (let i = 0; i < 5; i++) fxPush({ k: 'dust', x: hx, y: hy, vx: rnd(-90, 90), vy: rnd(-90, 40), g: 200, life: rnd(0.2, 0.35), r: rnd(1.2, 2.2) }); // destello del golpe
 }
@@ -816,6 +955,7 @@ function launch(o, vx, vy, owner) { // sale lanzada: vuela y daña al que golpea
   o.vx = vx; o.vy = vy; o.thrown = true; o.owner = owner; o.life = 1; o.hp = 1; o.docked = o.held = o.fall = o.rest = false; o.fxDone = false;
   o.lifeS = (RANGE[o.k] + (o.k === 'air' ? AIR_SHOT.per * ((o.lvl || 1) - 1) : 0)) / (Math.hypot(vx, vy) || 1); // recorre su alcance y termina (el aire se disipa, la piedra cae)
   if (o.k === 'earth') o.spin = (Math.random() < 0.5 ? -1 : 1) * rnd(3, 5);
+  if (NET.on && G && owner === G.me) netSend(NET.g, netOrbMsg(o)); // online: el rival lo ve salir
 }
 function stoneDrop(o) { // la piedra se detiene y cae al suelo (queda ahí y el maestro tierra la puede volver a tomar)
   o.thrown = o.held = o.docked = false; o.fall = true; o.rest = false; o.gy = o.y + 22; o.vx *= 0.25; o.vy = Math.min(o.vy * 0.2, -60); o.life = 1; o.hp = 1; o.lvl = 1; o.spin *= 0.5;
@@ -841,6 +981,7 @@ function breakBoulder(o) { // la roca grande se rompe: quedan un par de piedras 
 }
 function throwBig(o, vx, vy, owner) { // la roca grande sale lanzada rodando
   const sp = Math.hypot(vx, vy) || 1, v = clamp(sp, 300, BOULDER.v), R = orbR(o); o.held = o.rest = o.fall = o.raised = o.surf = false; o.thrown = true; o.life = 1; o.owner = owner; o.vx = vx / sp * v; o.vy = vy / sp * v; o.gy = o.y + R * 0.85; o.trail = null; o.rise = 1; o.lifeS = RANGE.earth / v;
+  if (NET.on && G && owner === G.me) netSend(NET.g, netOrbMsg(o));
 }
 function dropBig(o) { const R = orbR(o); o.held = o.thrown = o.raised = o.surf = false; o.fall = true; o.rest = false; o.gy = Math.max(o.gy || 0, o.y + R * 0.85); o.vx *= 0.3; o.vy = 0; o.rise = 1; } // la suelta despacio: cae y queda en el suelo
 function startSurf(p, m) { // tierra corriendo: una roca sale bajo sus pies y la surfea
@@ -1002,6 +1143,7 @@ function foeCycle(dt) {
     arm.ctl = { abs: true, x: sh.x + dx / d * 60, y: sh.y + dy / d * 60 }; arm.relAt = performance.now() + 300; foe.cyT = 1.1; }
 }
 function foeAttack(dt) {
+  if (NET.on) return; // online el rival es una persona
   if (G.foeTest) return foeCycle(dt); // el rival responde: si lo atacas con una llamarada/ráfaga/chorro, contesta con el suyo (así los ataques chocan)
   const foe = G.foe, me = G.me; if (G.phase !== 'fight' || !BEAM_K[foe.el]) return;
   if (foe.el === 'agua' && !G.orbs.some(o => o.docked && o.owner === foe) && (foe.bubT = (foe.bubT || 0) + dt) > 5) { foe.bubT = 0; giveBubble(foe, 2); } // el rival de agua recupera su burbuja
@@ -1021,7 +1163,8 @@ function beamStep(dt) {
     const m = b.owner, P = BEAM[b.k];
     if (b.on && ((b.stopAt && now >= b.stopAt) || G.phase !== 'fight')) b.on = false;
     if (b.on) {
-      if (b.free) { b.fuel = Math.max(0, b.fuel - dt / BEAM.dur); b.I = b.fuel; if (b.I <= 0.05) b.on = false; } // rival de prueba
+      if (b.net) { } // del rival (online): su intensidad la manda su teléfono
+      else if (b.free) { b.fuel = Math.max(0, b.fuel - dt / BEAM.dur); b.I = b.fuel; if (b.I <= 0.05) b.on = false; } // rival de prueba
       else if (b.k === 'water') { // el chorro gasta la burbuja: mientras más grande, más dura (y más fuerte)
         const o = b.orb; if (!o || !o.docked || o.life <= 0) b.on = false;
         else { o.lvl -= BEAM.use * dt; b.I = clamp(0.45 + 0.25 * o.lvl, 0.3, 1); if (o.lvl <= BEAM.minLvl) { o.docked = false; o.life = 0; o.vx = o.vy = 0; b.on = false; } }
@@ -1032,9 +1175,9 @@ function beamStep(dt) {
       if (p && [...PTRS.values()].includes(p)) { const dx = p.x - p.swipe.x, dy = p.y - p.swipe.y; if (Math.hypot(dx, dy) > 24) b.aim += wrapA(Math.atan2(dy, dx) - b.aim) * Math.min(1, dt * 10); } // sale hacia donde está tu dedo respecto de donde empezaste a deslizar (sin apuntado automático)
       const c = m.nodes[m.ix.upper], ux = Math.cos(b.aim), uy = Math.sin(b.aim);
       if (b.arm && ![...PTRS.values()].some(q => q !== p && q.arm === b.arm)) { const sh = m.nodes[b.arm.sh]; b.arm.ctl = { abs: true, x: sh.x + ux * 60, y: sh.y + uy * 60 }; b.arm.relAt = now + 120; } // el brazo apunta desde su hombro hacia donde sale
-      if (P.thrust) { const fc = foe.nodes[foe.ix.upper], tr = Math.atan2(fc.y - c.y, fc.x - c.x), second = G.beams.some(o => o !== b && o.on && o.owner === m && o.t0 < b.t0), f = second ? 1 : clamp(1 - Math.cos(b.aim - tr), 0, 1), ax = -ux, ay = -uy / DEPTH, al = Math.hypot(ax, ay) || 1, A = P.thrust * b.I * f; m.vx += ax / al * A * dt; m.vy += ay / al * A * dt;
+      if (P.thrust && !b.net) { const fc = foe.nodes[foe.ix.upper], tr = Math.atan2(fc.y - c.y, fc.x - c.x), second = G.beams.some(o => o !== b && o.on && o.owner === m && o.t0 < b.t0), f = second ? 1 : clamp(1 - Math.cos(b.aim - tr), 0, 1), ax = -ux, ay = -uy / DEPTH, al = Math.hypot(ax, ay) || 1, A = P.thrust * b.I * f; m.vx += ax / al * A * dt; m.vy += ay / al * A * dt;
         if (A > 150) { m.slide = 0.15; if (!b.hopped && m.z === 0 && m.vz === 0) { b.hopped = true; m.vz = THRUST_HOP; } } } // da un saltito hacia allá y luego los pies se deslizan // disparar hacia los lados o hacia atrás te impulsa hacia el otro lado (aire más que fuego); si ya estás usando otro, el segundo te impulsa en cualquier dirección, también hacia adelante (pedido del dueño)
-      const src = b.orb || (b.arm ? m.nodes[b.arm.ha] : c), ox = src.x + ux * 6 * m.s, oy = src.y + uy * 6 * m.s; b.ox = ox; b.oy = oy;
+      const src = b.net ? null : b.orb || (b.arm ? m.nodes[b.arm.ha] : c), ox = b.net ? b.ox : src.x + ux * 6 * m.s, oy = b.net ? b.oy : src.y + uy * 6 * m.s; b.ox = ox; b.oy = oy;
       const sp = (P.range || BEAM.range) * (0.3 + 0.7 * b.I) / BEAM.life;
       b.acc += P.rate * (0.35 + 0.65 * b.I) * dt;
       while (b.acc > 1) { b.acc--; const a = b.aim + (Math.random() + Math.random() - 1) * P.spread, s2 = sp * (0.85 + Math.random() * 0.3), j = (Math.random() - 0.5) * 4, life = BEAM.life * (0.8 + Math.random() * 0.3);
@@ -1113,10 +1256,10 @@ function drawBeams(ctx) {
   ctx.globalAlpha = 1;
 }
 function newRound() { // otra ronda después del K.O.
-  const { me, foe } = G; clearTouches();
+  const { me, foe } = G; clearTouches(); G.round = (G.round || 0) + 1; if (NET.on) { NET.mir.clear(); NET.rb.clear(); }
   for (const m of G.ms) { m.hp = HP_MAX; m.shield = 0; m.breath = 1; m.slide = 0; m.bould = null; m.surf = null; m.vx = m.vy = 0; m.z = m.vz = 0; }
   me.x = ARENA_W * 0.5; me.y = ARENA_D * 0.75; foe.x = ARENA_W * 0.5; foe.y = ARENA_D * 0.25; foe.home = { x: foe.x, y: foe.y }; foe.goal = null; foe.wait = 1.5;
-  G.orbs = []; G.flow = []; G.splashes = []; G.beams = []; G.trails = []; G.clash = null; foe.cyT = 1.2; if (foe.el === 'agua' && !G.foeTest) giveBubble(foe, 2); G.phase = 'count'; G.cd = COUNT_S + GO_S;
+  G.orbs = []; G.flow = []; G.splashes = []; G.beams = []; G.trails = []; G.clash = null; foe.cyT = 1.2; if (foe.el === 'agua' && !G.foeTest && !NET.on) giveBubble(foe, 2); G.phase = 'count'; G.cd = COUNT_S + GO_S;
 }
 function orbFx(o, n) { // gotitas o chispas que suelta la esfera
   for (let i = 0; i < n; i++) { const a = Math.random() * TAU, sp = 20 + Math.random() * 70;
@@ -1129,6 +1272,7 @@ function orbStep(dt) {
   for (const o of G.orbs) {
     o.t += dt;
     if (o.dead) continue; // se rompió
+    if (o.net) { const k = Math.min(1, dt * 15); o.x += (o.tx - o.x) * k; o.y += (o.ty - o.y) * k; o.vx = o.vy = 0; o.life = 1; if (o.docked && o.k !== 'air') { const c = o.owner.nodes[o.owner.ix.upper]; o.back = o.y < c.y - 2; } continue; } // del rival (online): va donde dice su teléfono
     if (o.big) { boulderStep(o, dt); continue; } // roca grande de tierra
     const p = [...PTRS.values()].find(q => q.orb === o);
     if (o.held && p) { // sigue a tu dedo con un resorte (se siente como moverlo con el control)
@@ -1305,7 +1449,7 @@ function layout() {
   const probe = document.createElement('div'); probe.style.cssText = 'position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px)'; document.body.appendChild(probe); SAB = probe.offsetHeight; probe.remove();
   if (scene === 'duel') { // en vertical la arena llena el alto que queda bajo la barra
     const top = $('hud').getBoundingClientRect().bottom + 6, avail = H - top - 12 - SAB, k = W / (ARENA_W + 40);
-    ARENA_D = H / W > 1.25 ? clamp((avail / k - TOP - 24) / DEPTH, 420, 1400) : 560;
+    ARENA_D = NET.on ? NET_D : H / W > 1.25 ? clamp((avail / k - TOP - 24) / DEPTH, 420, 1400) : 560;
   }
 }
 addEventListener('resize', layout);
@@ -1348,7 +1492,7 @@ function buildPick() {
     });
   }
 }
-$('btnBack').addEventListener('click', () => { clearTouches(); scene = 'pick'; G = null; calReset(''); $('calib').hidden = true; $('hud').hidden = true; $('pick').hidden = false; buildPick(); });
+$('btnBack').addEventListener('click', () => { if (NET.on) netClose(); clearTouches(); scene = 'pick'; G = null; calReset(''); $('calib').hidden = true; $('hud').hidden = true; $('pick').hidden = false; buildPick(); });
 $('btnCal').addEventListener('click', () => { centerTilt(); showTip('Centrado', 1200); });
 
 $('ver').textContent = 'Versión ' + VERSION;
@@ -1358,6 +1502,12 @@ showCtl();
 $('ctlBtn').addEventListener('click', () => { showCtl(); $('ctlPanel').hidden = false; });
 for (const b of document.querySelectorAll('.ctlopt')) b.addEventListener('click', () => { CTL = b.dataset.ctl; const st = load(); st.ctl = CTL; save(st); showCtl(); });
 for (const b of document.querySelectorAll('.handopt')) b.addEventListener('click', () => { HAND = b.dataset.hand; const st = load(); st.hand = HAND; save(st); showCtl(); });
+NET.el = load().el || 'fuego';
+function showNet() { $('netEls').innerHTML = EL_KEYS.map(k => `<button data-el="${k}" class="${k === NET.el ? 'on' : ''}" style="color:${ELEM[k].robe}">${ELEM[k].n}</button>`).join(''); for (const b of $('netEls').querySelectorAll('button')) b.addEventListener('click', () => { NET.el = b.dataset.el; showNet(); }); }
+$('netBtn').addEventListener('click', () => { showNet(); $('netCode').textContent = ''; netStatus(fbReady() ? 'Elige tu elemento y crea una sala o únete con un código.' : 'Falta la configuración de Firebase.'); $('netPanel').hidden = false; });
+$('netCreate').addEventListener('click', () => { NET.skin = Math.random() * SKINS.length | 0; netCreate(); });
+$('netJoin').addEventListener('click', () => { NET.skin = Math.random() * SKINS.length | 0; $('netCode').textContent = ''; netJoin($('netIn').value); });
+$('netCancel').addEventListener('click', () => { if (NET.code && !NET.guest && !NET.started) SIGNAL.del(NET.code); netClose(); $('netPanel').hidden = true; });
 $('ctlDone').addEventListener('click', () => { $('ctlPanel').hidden = true; });
 layout(); buildPick(); loop();
 if ('serviceWorker' in navigator && location.protocol === 'https:' && window.top === window) navigator.serviceWorker.register('sw.js').catch(() => { });
