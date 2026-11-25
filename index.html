@@ -137,7 +137,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.53'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.54'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -1034,8 +1034,8 @@ function boulderStep(o, dt) {
   if (o.hp <= 0) breakBoulder(o);
 }
 // Qué le hace un elemento al otro cuando chocan sus ataques (pedido del dueño): el aire y el agua le quitan vuelo a la tierra (el fuego no); el agua detiene al aire y al fuego;
-// la tierra detiene todo; el fuego detiene al aire y achica al agua (sin detenerla). Mismo elemento: se anulan
-const HIT_RULE = { earth: { earth: 'stop', fire: 'stop', water: 'stop', air: 'stop' }, water: { air: 'stop', fire: 'stop', earth: 'slow', water: 'stop' }, air: { earth: 'slow', air: 'stop' }, fire: { air: 'stop', water: 'weaken', fire: 'stop' } };
+// la tierra detiene todo; el fuego detiene al aire y achica al agua (sin detenerla); el viento detiene al fuego (avivándolo) y al agua (salpicándola). Mismo elemento: se anulan
+const HIT_RULE = { earth: { earth: 'stop', fire: 'stop', water: 'stop', air: 'stop' }, water: { air: 'stop', fire: 'stop', earth: 'slow', water: 'stop' }, air: { earth: 'slow', air: 'stop', fire: 'stop', water: 'stop' }, fire: { air: 'stop', water: 'weaken', fire: 'stop' } };
 function steamFx(x, y, n) { for (let i = 0; i < n; i++) fxPush({ k: 'steam', x: x + rnd(-6, 6), y: y + rnd(-6, 6), vx: rnd(-60, 60), vy: rnd(-80, -25), g: -25, life: rnd(0.8, 1.4), r: rnd(5, 9), grow: rnd(14, 24), drag: 1.5 }); } // vapor
 function burnMark(o, x, y) { // el fuego quema la piedra en el punto donde la toca (la marca gira con la piedra)
   const R = orbR(o), dx = x - o.x, dy = y - o.y, d = Math.hypot(dx, dy) || 1, k = Math.min(1, R * 0.8 / d), c = Math.cos(o.rot || 0), sn = Math.sin(o.rot || 0), lx = (dx * c + dy * sn) * k, ly = (-dx * sn + dy * c) * k;
@@ -1072,6 +1072,9 @@ function clashResolve(dt) { // choques entre ataques de distinto dueño: llamara
     const n = isOrbA && isOrbB ? 6 : 1;
     for (let i = 0; i < n; i++) { if (ea) blockFx(B.k, mx, my, bx.vx || 0, bx.vy || 0); if (eb) blockFx(A.k, mx, my, ax.vx || 0, ax.vy || 0); }
     if ((A.k === 'fire' && B.k === 'water') || (A.k === 'water' && B.k === 'fire')) steamFx(mx, my, n * 2);
+    const pk = [A.k, B.k].sort().join('+'), w = A.k === 'air' ? ax : bx, wv = Math.hypot(w.vx || 0, w.vy || 0) || 1, wx = (w.vx || 0) / wv, wy = (w.vy || 0) / wv; // hacia donde sopla el viento
+    if (pk === 'air+fire') for (let i = 0; i < n * 2; i++) { fxPush({ k: 'flame', x: mx + rnd(-4, 4), y: my + rnd(-4, 4), vx: wx * rnd(40, 140) + rnd(-50, 50), vy: wy * rnd(40, 140) - rnd(30, 90), g: -70, life: rnd(0.35, 0.6), r: rnd(6, 11), grow: 22, drag: 2 }); fxPush({ k: 'ember', x: mx, y: my, vx: wx * rnd(60, 200) + rnd(-80, 80), vy: wy * rnd(60, 200) - rnd(40, 120), g: -30, life: rnd(0.4, 0.8), r: rnd(1.4, 2.6) }); } // el viento aviva el fuego (una llamarada que crece) aunque lo detiene
+    if (pk === 'air+water') for (let i = 0; i < n * 3; i++) { const s2 = Math.random() < 0.5 ? -1 : 1; fxPush({ k: 'drop', x: mx, y: my, vx: wx * rnd(60, 180) - wy * s2 * rnd(80, 220), vy: wy * rnd(60, 180) + wx * s2 * rnd(80, 220) - rnd(60, 160), g: 520, life: rnd(0.5, 0.9), r: rnd(1.6, 3.2) }); if (i % 3 === 0) fxPush({ k: 'mist', x: mx, y: my, vx: wx * 60, vy: wy * 60 - 20, g: 0, life: 0.5, r: rnd(5, 8), grow: 22, drag: 2 }); } // el viento detiene el agua y la salpica
     for (const [X, Y, isOrbY] of [[A, B, isOrbB], [B, A, isOrbA]]) if (X.o && X.k === 'earth') { const o = X.o;
       if (Y.k === 'fire') { burnMark(o, mx, my); o.heat = Math.min(1, (o.heat || 0) + (isOrbY ? 0.3 : 0.012)); }
       else if (o.heat > 0.15 && Y.k === 'water') { steamFx(mx, my, 1 + Math.round(o.heat * (isOrbY ? 10 : 3))); o.heat = Math.max(0, o.heat - (isOrbY ? 0.3 : 0.02)); }

@@ -1,5 +1,5 @@
 // Prueba de cómo reacciona cada elemento al chocar (esferas lanzadas, guardadas y en la mano):
-// el aire y el agua le quitan vuelo a la tierra (el fuego no); el agua detiene al aire y al fuego; la tierra detiene todo; el fuego detiene al aire y achica al agua sin detenerla; mismo elemento: se anulan.
+// el aire y el agua le quitan vuelo a la tierra (el fuego no); el agua detiene al aire y al fuego; la tierra detiene todo; el fuego detiene al aire y achica al agua sin detenerla; el viento detiene al fuego (avivándolo) y al agua (salpicándola); mismo elemento: se anulan.
 // Uso: node tools/hits.js
 const { chromium, devices } = require('playwright');
 (async () => {
@@ -16,10 +16,16 @@ const { chromium, devices } = require('playwright');
     const st = (o, v0) => o.life <= 0 || o.dead || (!o.thrown && o.k === 'earth') ? 'stop' : o.weak ? 'weak' : Math.abs(o.vx) < v0 * 0.9 ? 'slow' : 'ok';
     return [st(a, va), st(b, vb)];
   }, [ka, kb]);
-  const want = { 'fire/water': ['stop', 'weak'], 'fire/air': ['ok', 'stop'], 'fire/earth': ['stop', 'ok'], 'water/air': ['ok', 'stop'], 'water/earth': ['stop', 'slow'], 'air/earth': ['stop', 'slow'], 'earth/earth': ['stop', 'stop'], 'fire/fire': ['stop', 'stop'], 'water/water': ['stop', 'stop'], 'air/air': ['stop', 'stop'] };
+  const want = { 'fire/water': ['stop', 'weak'], 'fire/air': ['stop', 'stop'], 'fire/earth': ['stop', 'ok'], 'water/air': ['stop', 'stop'], 'water/earth': ['stop', 'slow'], 'air/earth': ['stop', 'slow'], 'earth/earth': ['stop', 'stop'], 'fire/fire': ['stop', 'stop'], 'water/water': ['stop', 'stop'], 'air/air': ['stop', 'stop'] };
   const res = {};
   for (const [k, w] of Object.entries(want)) { const [ka, kb] = k.split('/'); const r = await pairTest(ka, kb); res[k] = r.join(' / ');
     if (r[0] !== w[0] || r[1] !== w[1]) errs.push(`${k}: se esperaba ${w.join(' / ')}, dio ${r.join(' / ')}`); }
+  // el viento aviva el fuego (llamarada) y salpica el agua al detenerlos
+  const windFx = async kb => p.evaluate(async kb => { G.orbs = []; G.fx = []; const y = TOP + ARENA_D * 0.3 * DEPTH, a = newOrb('air', 160, y), b = newOrb(kb, 360, y); G.orbs.push(a, b); launch(a, 500, 0, G.me); launch(b, -500, 0, G.foe);
+    await new Promise(r => setTimeout(r, 300)); return { flame: G.fx.filter(q => q.k === 'flame').length, drop: G.fx.filter(q => q.k === 'drop').length }; }, kb);
+  res.windFire = await windFx('fire'); res.windWater = await windFx('water');
+  if (!(res.windFire.flame > 6)) errs.push('el viento no avivó el fuego: ' + JSON.stringify(res.windFire));
+  if (!(res.windWater.drop > 10)) errs.push('el viento no salpicó el agua: ' + JSON.stringify(res.windWater));
   // guardadas y en la mano también chocan
   const stayTest = (mine, mode, inc) => p.evaluate(async ([mine, mode, inc]) => {
     G.orbs = []; const c = G.me.nodes[G.me.ix.upper], o = newOrb(mine, c.x + 40, c.y); o.owner = G.me; G.orbs.push(o);
@@ -29,7 +35,7 @@ const { chromium, devices } = require('playwright');
     await new Promise(r => setTimeout(r, 350));
     PTRS.delete(999); return { mine: o.life <= 0 || o.dead ? 'gone' : o.weak ? 'weak' : 'ok', inc: i.weak ? 'weak' : i.life <= 0 || i.dead || (!i.thrown && inc === 'earth') ? 'stop' : 'ok' }; // (la que se achica puede seguir y golpearte)
   }, [mine, mode, inc]);
-  const stays = [['fire', 'docked', 'air', 'ok', 'stop'], ['fire', 'docked', 'water', 'gone', 'weak'], ['earth', 'docked', 'fire', 'ok', 'stop'], ['water', 'held', 'fire', 'weak', 'stop']];
+  const stays = [['fire', 'docked', 'air', 'gone', 'stop'], ['fire', 'docked', 'water', 'gone', 'weak'], ['earth', 'docked', 'fire', 'ok', 'stop'], ['water', 'held', 'fire', 'weak', 'stop']];
   res.stay = {};
   for (const [mine, mode, inc, wm, wi] of stays) { const r = await stayTest(mine, mode, inc); res.stay[`${mine} ${mode} / ${inc}`] = r;
     if (r.mine !== wm || r.inc !== wi) errs.push(`${mine} ${mode} contra ${inc}: se esperaba ${wm} / ${wi}, dio ${r.mine} / ${r.inc}`); }
