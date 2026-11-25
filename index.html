@@ -137,7 +137,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.52'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.53'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -643,7 +643,7 @@ function startDuel(el, net = null) { // net: pelea online (el elemento y el colo
 // ONLINE (pedido del dueño): los dos celulares se conectan directo entre sí (WebRTC); Firebase (Firestore) sólo se usa
 // un momento para intercambiar los datos de conexión al crear o unirse a una sala, y después ya no se usa.
 // ============================================================================
-const FIREBASE = { apiKey: '', projectId: '' }; // configuración web del proyecto Firebase del dueño (Consola → Configuración del proyecto → Tus apps)
+const FIREBASE = { apiKey: 'AIzaSyDUaFYm2rd2rfKHyv2qiLxmvtTvTvo1UqU', projectId: 'elemental-fu-ed205' }; // configuración web del proyecto Firebase del dueño (Consola → Configuración del proyecto → Tus apps)
 const NET_D = 820; // en línea la arena tiene el mismo largo en los dos teléfonos
 const NET = { on: false, guest: false, pc: null, g: null, s: null, code: '', started: false, ready: false, remoteReady: false, rs: null, mir: new Map(), rb: new Map(), gone: new Set(), seq: 0, sendT: 0, el: 'fuego', skin: 0 };
 const fsURL = code => `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents/elementalfu_rooms/${code}?key=${FIREBASE.apiKey}`;
