@@ -1,0 +1,14 @@
+rules_version = '2';
+// Elemental-Fu: Firestore sólo guarda un momento los datos de conexión de cada sala (la pelea va directo entre los teléfonos).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /elementalfu_rooms/{code} {
+      allow get, delete: if true;
+      allow list: if false;
+      allow create: if request.resource.data.keys().hasOnly(['offer', 't'])
+        && request.resource.data.offer is string && request.resource.data.offer.size() < 20000;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answer'])
+        && request.resource.data.answer is string && request.resource.data.answer.size() < 20000;
+    }
+  }
+}
