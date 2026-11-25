@@ -137,7 +137,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.54'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.55'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -245,7 +245,7 @@ class Fighter {
       return { sd, hip, knee, foot, hx: sd * B.hipX, ph: sd > 0 ? Math.PI : 0 };
     });
     I.hem = [-1, 1].map(sd => { const i = add(I.root, sd * B.torW * 0.54, B.legU * 0.85, 70, 0.18); N[i].sil = sd; return i; }); // borde de la túnica: blando, se mece al caminar
-    for (const i of [I.lower, I.upper, I.head]) N[i].ff = true; // torso y cabeza no se quedan atrás al caminar (si no, la cadera iba adelante y se veía inclinada la parte de abajo)
+    for (const i of [I.lower, I.upper, I.head, ...I.arms.flatMap(a => [a.sh, a.el, a.ha])]) N[i].ff = true; // los brazos tampoco se quedan atrás (al caminar hacia la cámara se veían levantados) // torso y cabeza no se quedan atrás al caminar (si no, la cadera iba adelante y se veía inclinada la parte de abajo)
     for (const a of I.arms) for (const i of [a.el, a.ha]) N[i].limb = true;
     for (const L of I.legs) for (const i of [L.knee, L.foot]) N[i].limb = true;
     for (const n of N) if (n.limb) { const z = Math.max(LIMB.z, n.c / (2 * Math.sqrt(n.k))); n.k *= LIMB.k; n.c = 2 * z * Math.sqrt(n.k); }
@@ -302,19 +302,19 @@ class Fighter {
     I.hem.forEach((h, i) => { const n = N[h]; n.ax = -lean * 4 + Math.sin(t * 2.4 + i * 1.7) * 0.6 * (1 + moving); n.ay = -moving * 1.5; }); // la túnica queda atrás
     // Piernas: los pies buscan el suelo y dan pasos hacia donde camina; en guardia, abiertas, flectadas y un pie algo adelante
     // Pasos (pedido del dueño): cada pie queda plantado en el suelo y, cuando el cuerpo se aleja, da un paso hacia adelante (se alternan); más rápido = pasos más largos y seguidos
-    const air = this.surf ? 0 : clamp(this.z / 18, 0, 1), vxs = this.vx, vys = this.vy * DEPTH, stepT = clamp(0.2 - sp * 0.0004, 0.11, 0.2), thr = (2.5 + sp * 0.03) * s, sliding = this.slide > 0; // en el aire las piernas se recogen; deslizándose (impulso), los pies no dan pasos
+    const air = this.surf ? 0 : clamp(this.z / 18, 0, 1), vxs = this.vx, vys = this.vy * DEPTH, stepT = clamp(0.22 - sp * 0.0004, 0.13, 0.22), half = Math.hypot(vxs, vys) * stepT * 0.5, thr = Math.max(2.5 * s, half), sliding = this.slide > 0, ux = sp > 1 ? vxs / Math.hypot(vxs, vys) : 0, uy = sp > 1 ? vys / Math.hypot(vxs, vys) : 0; // en el aire las piernas se recogen; deslizándose (impulso), los pies no dan pasos
     for (const L of I.legs) {
       const hip = N[L.hip], knee = N[L.knee], foot = N[L.foot], other = I.legs.find(q => q !== L);
       const f = P2(L.hx * 1.1 + L.sd * STANCE.feet * gk, -L.sd * STANCE.stagger * gk, 0), hx = this.gx + f.x * s, hy = this.gy + f.y * s - (this.surf ? this.z : 0); // surfeando, los pies van sobre la roca
       if (L.fx == null || air > 0 || sliding) { L.fx = hx; L.fy = hy; L.st = null; }
-      if (!L.st && !air && !sliding && !other.st) { const d = Math.hypot(hx + vxs * stepT - L.fx, hy + vys * stepT - L.fy); if (d > thr || (sp < 5 && d > 1.5 * s)) { L.st = { x0: L.fx, y0: L.fy, u: 0 }; this.steps = (this.steps || 0) + 1; } }
+      if (!L.st && !air && !sliding && !other.st) { const rx = L.fx - hx, ry = L.fy - hy, along = rx * ux + ry * uy, d = Math.hypot(rx, ry); if ((sp > 15 && along < -half * 0.9) || d > thr * 1.6 + 3 * s || (sp < 5 && d > 1.5 * s)) { L.st = { x0: L.fx, y0: L.fy, u: 0 }; this.steps = (this.steps || 0) + 1; } } // el pie de atrás da el paso cuando el cuerpo lo deja atrás (pasos parejos: cae tan adelante como quedó atrás)
       let px = L.fx, py = L.fy, lift = 0;
-      if (L.st) { const u = Math.min(1, L.st.u += dt / stepT), e = u * u * (3 - 2 * u), tx = hx + vxs * stepT * 0.9, ty = hy + vys * stepT * 0.9;
-        px = lerp(L.st.x0, tx, e); py = lerp(L.st.y0, ty, e); lift = Math.sin(Math.PI * u) * (2.5 + Math.min(4, sp * 0.025)) * s; if (u >= 1) { L.fx = px; L.fy = py; L.st = null; } }
+      if (L.st) { const u = Math.min(1, L.st.u += dt / stepT), e = u * u * (3 - 2 * u), tx = hx + ux * half, ty = hy + uy * half;
+        px = lerp(L.st.x0, tx, e); py = lerp(L.st.y0, ty, e); lift = Math.sin(Math.PI * u) * (3 + Math.min(7, sp * 0.035)) * s; /* más rápido = levanta más el pie (se nota que corre) */ if (u >= 1) { L.fx = px; L.fy = py; L.st = null; } }
       foot.tx = px;
       foot.ty = Math.min(py - lift, hip.y + this.legSum * s * (0.98 - 0.3 * air));
-      const k = P2(L.sd * (2 + STANCE.knee * gk), STANCE.kneeFwd * gk, -gk * 1.5);
-      knee.tx = (hip.x + foot.x) / 2 + k.x * s; knee.ty = (hip.y + foot.y) / 2 + k.y * s;
+      const k = P2(L.sd * (2 + STANCE.knee * gk), STANCE.kneeFwd * gk + lift * 0.5 / s, -gk * 1.5 - lift * 0.3 / s); // al levantar el pie la rodilla sube y va adelante
+      knee.tx = (hip.x + foot.tx) / 2 + k.x * s; knee.ty = Math.max((hip.y + foot.ty) / 2 + k.y * s, hip.y + 2 * s); // con el destino del pie (no donde quedó), y siempre bajo la cadera: si no, la pierna se doblaba hacia arriba
     }
   }
   rigStep(dt) { // resorte hacia su lugar + los huesos no se estiran infinito
