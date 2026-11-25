@@ -26,12 +26,22 @@ const { chromium, devices } = require('playwright');
   res.windFire = await windFx('fire'); res.windWater = await windFx('water');
   if (!(res.windFire.flame > 6)) errs.push('el viento no avivó el fuego: ' + JSON.stringify(res.windFire));
   if (!(res.windWater.drop > 10)) errs.push('el viento no salpicó el agua: ' + JSON.stringify(res.windWater));
+  // al golpear: fuego quema (brasas), agua empapa, piedra deja moretones, viento sacude la ropa
+  const status = async k => p.evaluate(async k => { G.orbs = []; const f = G.foe; f.burn = f.wet = f.gust = 0; f.bruises = []; f.shield = 0; const c = f.nodes[f.ix.upper], o = newOrb(k, c.x - 150, c.y); G.orbs.push(o); launch(o, 700, 0, G.me);
+    await new Promise(r => setTimeout(r, 400)); return { burn: +(f.burn || 0).toFixed(2), wet: +(f.wet || 0).toFixed(2), bruise: (f.bruises || []).length, gust: +(f.gust || 0).toFixed(2) }; }, k);
+  await p.evaluate(() => { G.foe.x = ARENA_W * 0.6; G.foe.y = ARENA_D * 0.5; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
+  res.status = { fire: await status('fire'), water: await status('water'), earth: await status('earth'), air: await status('air') };
+  if (!(res.status.fire.burn > 0.5)) errs.push('el fuego no lo quemó');
+  if (!(res.status.water.wet > 0.5)) errs.push('el agua no lo empapó');
+  if (!(res.status.earth.bruise > 0)) errs.push('la piedra no le dejó moretón');
+  if (!(res.status.air.gust > 0.3)) errs.push('el viento no le sacudió la ropa');
+  await p.evaluate(() => { G.foe.x = ARENA_W * 0.85; G.foe.y = ARENA_D * 0.85; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
   // guardadas y en la mano también chocan
   const stayTest = (mine, mode, inc) => p.evaluate(async ([mine, mode, inc]) => {
     G.orbs = []; const c = G.me.nodes[G.me.ix.upper], o = newOrb(mine, c.x + 40, c.y); o.owner = G.me; G.orbs.push(o);
     if (mode === 'docked') { o.docked = true; o.lvl = 1; if (mine === 'water') o.side = 1; } else { o.held = true; o.x = c.x + 60; o.y = c.y - 80; const v = view(); PTRS.set(999, { x: v.ox + o.x * v.k, y: v.oy + o.y * v.k, x0: 0, y0: 0, t0: performance.now(), moved: true, prop: -1, orb: o }); } // en la mano: un dedo simulado la sostiene
     await new Promise(r => setTimeout(r, 300));
-    const tx = o.x, ty = o.y, i = newOrb(inc, tx + 140, ty); G.orbs.push(i); launch(i, -700, 0, G.foe);
+    const ch = G.me.nodes[G.me.ix.upper], rx = o.x - ch.x, ry = o.y - ch.y, rd = Math.hypot(rx, ry) || 1, ux = mode === 'docked' ? rx / rd : 1, uy = mode === 'docked' ? ry / rd : 0, i = newOrb(inc, o.x + ux * 140, o.y + uy * 140); G.orbs.push(i); launch(i, -ux * 700, -uy * 700, G.foe); // llega a la esfera desde afuera (si orbita, en línea con el pecho)
     await new Promise(r => setTimeout(r, 350));
     PTRS.delete(999); return { mine: o.life <= 0 || o.dead ? 'gone' : o.weak ? 'weak' : 'ok', inc: i.weak ? 'weak' : i.life <= 0 || i.dead || (!i.thrown && inc === 'earth') ? 'stop' : 'ok' }; // (la que se achica puede seguir y golpearte)
   }, [mine, mode, inc]);
