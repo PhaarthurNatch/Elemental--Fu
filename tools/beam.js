@@ -70,7 +70,7 @@ const { chromium, devices } = require('playwright');
   res.recoil = { fuego: (await recoil('fuego', { x: 1, y: 0 })).toFixed(0), aire: (await recoil('aire', { x: 1, y: 0 })).toFixed(0), aireAdelante: (await recoil('aire')).toFixed(0) };
   if (!(res.recoil.fuego < -15)) errs.push('fuego: disparar hacia el lado no lo impulsó');
   if (!(+res.recoil.aire < +res.recoil.fuego * 1.4)) errs.push('aire: no impulsó más que el fuego');
-  if (!(Math.abs(res.recoil.aireAdelante) < 10)) errs.push('aire: disparar hacia el rival lo movió');
+  if (!(hop.aireAdelante && hop.aireAdelante.z > 4 && hop.aireAdelante.sl > 3)) errs.push('aire: disparar hacia el rival debía impulsarlo (saltito y deslizamiento)');
   res.hop = hop; if (!(hop.fuegoLado.z > 4 && hop.aireLado.z > 4 && hop.fuegoLado.sl > 3)) errs.push('al impulsarse no dio el saltito o no se deslizó: ' + JSON.stringify(hop));
   // con una llamarada ya en uso, una segunda hacia adelante (otro dedo) sí te impulsa (hacia atrás)
   const two = async (both) => { await start('fuego'); await p.evaluate(() => { G.foe.y = ARENA_D * 0.15; G.me.y = ARENA_D * 0.55; }); await p.waitForTimeout(300); const y0 = await p.evaluate(() => G.me.y);
@@ -80,7 +80,7 @@ const { chromium, devices } = require('playwright');
     await p.waitForTimeout(700); const r = { n: await p.evaluate(() => G.beams.filter(b => b.on && b.owner === G.me).length), dy: (await p.evaluate(() => G.me.y) - y0).toFixed(0) };
     await t('touchEnd', []); await p.waitForTimeout(500); return r; };
   res.one = await two(false); res.two = await two(true);
-  if (!(Math.abs(res.one.dy) < 10)) errs.push('una llamarada hacia adelante te movió');
+  if (!(res.one.dy > 15)) errs.push('una llamarada hacia adelante (una mano) debía impulsarte hacia atrás: ' + JSON.stringify(res.one));
   if (!(res.two.n === 2 && res.two.dy > 15)) errs.push('la segunda llamarada hacia adelante no te impulsó: ' + JSON.stringify(res.two));
   // rival de prueba: lanza fuego, agua y aire de corrido
   await start('tierra'); await p.evaluate(() => { G.foeTest = true; G.foe.cyT = 0; });

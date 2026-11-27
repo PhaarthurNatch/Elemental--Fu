@@ -137,7 +137,7 @@ button{font:inherit;color:inherit;border:0;cursor:pointer}
 </div>
 <script>
 'use strict';
-const VERSION = 'v0.56'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
+const VERSION = 'v0.57'; // versión que se ve arriba al elegir personaje: subirla en cada cambio (pedido del dueño)
 // ============================================================================
 // ELEMENTAL-FU — duelos de control de elementos (su propio guardado, caché y web app).
 // Arena vista desde arriba (2.5D: el suelo comprimido con DEPTH) y personajes con física de resortes.
@@ -575,7 +575,7 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => {
   if (e.pointerId === TOUCH.id) { TOUCH.x = e.clientX; TOUCH.y = e.clientY; return; }
   const p = PTRS.get(e.pointerId); if (!p) return; p.x = e.clientX; p.y = e.clientY;
-  const nowT = performance.now(); (p.hist = p.hist || [{ t: p.t0, x: p.x0, y: p.y0 }]).push({ t: nowT, x: p.x, y: p.y }); if (p.hist.length > 4) p.hist.shift(); // últimos movimientos del dedo (para saber qué tan rápido desliza)
+  const nowT = performance.now(); (p.hist = p.hist || [{ t: p.t0, x: p.x0, y: p.y0 }]).push({ t: nowT, x: p.x, y: p.y }); if (p.hist.length > 10) p.hist.shift(); // últimos movimientos del dedo (para saber qué tan rápido desliza)
   if (!p.moved && Math.hypot(p.x - p.x0, p.y - p.y0) > TAP_MOVE && G) { // empieza a mover el brazo del lado donde está el dedo
     const me = G.me, a = p.arm || pickArm(p.x, p.y);
     if (a) { p.moved = true; p.arm = a; a.ctl = (w => ({ abs: true, reach: true, x: w.x, y: w.y }))(toWorld(p.x, p.y)); p.x0 = p.x; p.y0 = p.y; me.charge = 0; 
@@ -596,6 +596,13 @@ cv.addEventListener('pointermove', e => {
   if (p.prop >= 0 && p.arm && !p.orb && !p.stream && !p.splashed && !p.dragT && G && pdist > TAP_MOVE) p.dragT = nowT; // empezó a arrastrar desde el pozo o la llama: si suelta pronto es salpicadura; si sigue, sale la esfera (dragStep)
   if (p.arm && p.arm.ctl && !p.splashed && !p.fired && !p.docked && !p.beam && !p.boulder) { if (p.arm.ctl.abs) { const w = toWorld(p.x, p.y); p.arm.ctl.x = w.x; p.arm.ctl.y = w.y; } else { const k = view().k; p.arm.ctl.dx = (p.x - p.x0) / k * ARM_GAIN; p.arm.ctl.dy = (p.y - p.y0) / k * ARM_GAIN; } }
 });
+function fingerVel(p) { // rapidez del dedo justo al soltarlo (en unidades del dibujo por segundo); si ya se había detenido, cero
+  const h = p.hist, now = performance.now(); if (!h || h.length < 2) return { vx: 0, vy: 0, sp: 0 };
+  const last = h[h.length - 1]; if (now - last.t > 90) return { vx: 0, vy: 0, sp: 0 };
+  let first = h[h.length - 2]; for (let i = h.length - 2; i >= 0; i--) { first = h[i]; if (last.t - h[i].t > 100) break; }
+  const dt = (last.t - first.t) / 1000; if (dt < 0.008) return { vx: 0, vy: 0, sp: 0 };
+  const k = view().k, vx = (last.x - first.x) / dt / k, vy = (last.y - first.y) / dt / k; return { vx, vy, sp: Math.hypot(vx, vy) };
+}
 const endPtr = (e, up) => {
   if (e.pointerId === TOUCH.id) { TOUCH.id = null; return; }
   const p = PTRS.get(e.pointerId); if (!p) return; PTRS.delete(e.pointerId);
@@ -603,8 +610,9 @@ const endPtr = (e, up) => {
     const pr = arenaProps()[p.prop], d = Math.hypot(p.x - p.x0, p.y - p.y0);
     if (PROP_EL[pr.k] === G.me.el && d > SPLASH.decide) { const v = d / Math.max(0.03, (performance.now() - p.dragT) / 1000); spawnSplash(pr, (p.x - p.x0) / d, (p.y - p.y0) / d, v, G.me); }
   }
-  if (p.orb && !p.orb.dead && p.orb.life > 0 && p.orb.big) { const o = p.orb, sp = Math.hypot(o.vx, o.vy); o.held = false; if (sp > THROW.min * 0.6 && G) throwBig(o, o.vx, o.vy, G.me); else dropBig(o); } // roca grande: rápido = lanzada, despacio = queda en el suelo
-  else if (p.orb && !p.orb.dead && p.orb.life > 0) { const o = p.orb, sp = Math.hypot(o.vx, o.vy); o.held = false; if (sp > THROW.min && G) { const k = Math.min(1, THROW.max / sp); launch(o, o.vx * k, o.vy * k, G.me); } else if (o.k === 'earth') stoneDrop(o); } // soltarla moviéndola rápido = lanzarla; despacio: el agua cae y salpica, el fuego se apaga
+  const fv = fingerVel(p); // para lanzar hay que darle vuelo: venir moviendo el dedo rápido al soltar (pedido del dueño; antes bastaba que la esfera fuera rápido detrás del dedo)
+  if (p.orb && !p.orb.dead && p.orb.life > 0 && p.orb.big) { const o = p.orb; o.held = false; if (fv.sp > THROW.min * 0.6 && G) throwBig(o, fv.vx, fv.vy, G.me); else dropBig(o); } // roca grande: rápido = lanzada, despacio = queda en el suelo
+  else if (p.orb && !p.orb.dead && p.orb.life > 0) { const o = p.orb, sp = fv.sp; o.held = false; if (sp > THROW.min && G) { const k = Math.min(1, THROW.max / sp); launch(o, fv.vx * k, fv.vy * k, G.me); } else { o.vx *= 0.3; o.vy *= 0.3; if (o.k === 'earth') stoneDrop(o); } } // soltarla moviéndola rápido = lanzarla; despacio: el agua cae y salpica, el fuego se apaga
   if (p.surf) endSurf(p); // tierra: al soltar se baja de la roca y la roca sale hacia donde apunta el dedo
   else if (up && G && G.phase === 'fight' && p.swipe && !p.beam && !p.fired && !fireDocked(p)) { if (G.me.el !== 'tierra') startBeam(p, G.me, performance.now() + BEAM.burst * 1000); } // soltó pronto después de deslizar: dispara la esfera guardada o una llamarada/ráfaga corta (tierra: lanza la roca grande de inmediato)
   if (p.beam) p.beam.stopAt = Math.max(performance.now(), p.beam.t0 + BEAM.burst * 1000); // al soltar, la llamarada se corta
@@ -1195,8 +1203,8 @@ function beamStep(dt) {
       if (p && [...PTRS.values()].includes(p)) { const dx = p.x - p.swipe.x, dy = p.y - p.swipe.y; if (Math.hypot(dx, dy) > 24) b.aim += wrapA(Math.atan2(dy, dx) - b.aim) * Math.min(1, dt * 10); } // sale hacia donde está tu dedo respecto de donde empezaste a deslizar (sin apuntado automático)
       const c = m.nodes[m.ix.upper], ux = Math.cos(b.aim), uy = Math.sin(b.aim);
       if (b.arm && ![...PTRS.values()].some(q => q !== p && q.arm === b.arm)) { const sh = m.nodes[b.arm.sh]; b.arm.ctl = { abs: true, x: sh.x + ux * 60, y: sh.y + uy * 60 }; b.arm.relAt = now + 120; } // el brazo apunta desde su hombro hacia donde sale
-      if (P.thrust && !b.net) { const fc = foe.nodes[foe.ix.upper], tr = Math.atan2(fc.y - c.y, fc.x - c.x), second = G.beams.some(o => o !== b && o.on && o.owner === m && o.t0 < b.t0), f = second ? 1 : clamp(1 - Math.cos(b.aim - tr), 0, 1), ax = -ux, ay = -uy / DEPTH, al = Math.hypot(ax, ay) || 1, A = P.thrust * b.I * f; m.vx += ax / al * A * dt; m.vy += ay / al * A * dt;
-        if (A > 150) { m.slide = 0.15; if (!b.hopped && m.z === 0 && m.vz === 0) { b.hopped = true; m.vz = THRUST_HOP; } } } // da un saltito hacia allá y luego los pies se deslizan // disparar hacia los lados o hacia atrás te impulsa hacia el otro lado (aire más que fuego); si ya estás usando otro, el segundo te impulsa en cualquier dirección, también hacia adelante (pedido del dueño)
+      if (P.thrust && !b.net) { const f = 1, ax = -ux, ay = -uy / DEPTH, al = Math.hypot(ax, ay) || 1, A = P.thrust * b.I * f; m.vx += ax / al * A * dt; m.vy += ay / al * A * dt;
+        if (A > 150) { m.slide = 0.15; if (!b.hopped && m.z === 0 && m.vz === 0) { b.hopped = true; m.vz = THRUST_HOP; } } } // te impulsa hacia el lado contrario a donde sale, apunte a donde apunte (también hacia el rival) y con una sola mano (pedido del dueño; aire más que fuego); da un saltito hacia allá y luego los pies se deslizan
       const src = b.net ? null : b.orb || (b.arm ? m.nodes[b.arm.ha] : c), ox = b.net ? b.ox : src.x + ux * 6 * m.s, oy = b.net ? b.oy : src.y + uy * 6 * m.s; b.ox = ox; b.oy = oy;
       const sp = (P.range || BEAM.range) * (0.3 + 0.7 * b.I) / BEAM.life;
       b.acc += P.rate * (0.35 + 0.65 * b.I) * dt;

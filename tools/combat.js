@@ -34,6 +34,12 @@ const { chromium, devices } = require('playwright');
     await t('touchEnd', []);
     const hp0 = await p.evaluate(() => G.foe.hp); await p.waitForTimeout(1200); return hp0 - await p.evaluate(() => G.foe.hp);
   };
+  // sin vuelo no se lanza: sacar la bola, llevar el dedo rápido hasta el rival, dejarlo quieto y soltar → no sale disparada ni lo daña (antes sí)
+  { const tg = await p.evaluate(() => { const v = view(), f = G.foe; return { x: v.ox + f.gx * v.k, y: v.oy + (f.gy - 40 * f.s) * v.k }; }), hp0 = await p.evaluate(() => G.foe.hp);
+    await t('touchStart', [{ x: fire.x, y: fire.y }]); await p.waitForTimeout(60); for (let i = 1; i <= 9; i++) { await t('touchMove', [{ x: fire.x + i * 5, y: fire.y + i * 4 }]); await p.waitForTimeout(40); }
+    await p.waitForTimeout(150); await t('touchMove', [{ x: tg.x, y: tg.y }]); await p.waitForTimeout(120); await t('touchEnd', []); await p.waitForTimeout(800);
+    const r = { thrown: await p.evaluate(() => G.orbs.some(o => o.thrown)), dmg: hp0 - await p.evaluate(() => G.foe.hp) }; console.log({ sinVuelo: r });
+    if (r.dmg > 0.5) errs.push('sin darle vuelo, la bola igual salió disparada y dañó al rival'); await p.waitForTimeout(400); }
   const d1 = await throwAt();
   await p.evaluate(() => { G.foe.shield = 1; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.25; G.foe.vx = G.foe.vy = 0; }); await p.waitForTimeout(500);
   const d2 = await throwAt();
