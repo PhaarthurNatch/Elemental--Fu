@@ -1,5 +1,5 @@
 // Prueba de cómo reacciona cada elemento al chocar (esferas lanzadas, guardadas y en la mano):
-// el aire y el agua le quitan vuelo a la tierra (el fuego no); el agua detiene al aire y al fuego; la tierra detiene todo; el fuego detiene al aire y achica al agua sin detenerla; mismo elemento: se anulan.
+// el aire y el agua le quitan vuelo a la tierra: la piedra se queda donde está (el fuego no); el agua detiene al aire y al fuego; la tierra detiene todo; el fuego detiene al aire y achica al agua sin detenerla; el viento detiene al fuego (avivándolo) y al agua (salpicándola); mismo elemento: se anulan.
 // Uso: node tools/hits.js
 const { chromium, devices } = require('playwright');
 (async () => {
@@ -14,22 +14,39 @@ const { chromium, devices } = require('playwright');
     G.orbs = []; G.fx = []; const y = TOP + ARENA_D * 0.3 * DEPTH, a = newOrb(ka, 160, y), b = newOrb(kb, 360, y); G.orbs.push(a, b); launch(a, 500, 0, G.me); launch(b, -500, 0, G.foe);
     const va = Math.abs(a.vx), vb = Math.abs(b.vx); await new Promise(r => setTimeout(r, 300));
     const st = (o, v0) => o.life <= 0 || o.dead || (!o.thrown && o.k === 'earth') ? 'stop' : o.weak ? 'weak' : Math.abs(o.vx) < v0 * 0.9 ? 'slow' : 'ok';
-    return [st(a, va), st(b, vb)];
+    const ra = st(a, va), rb = st(b, vb); await new Promise(r => setTimeout(r, 500)); const keep = kb === 'earth' && rb === 'stop' ? (b.rest || b.fall) && !b.dead && G.orbs.includes(b) : true; // la piedra detenida o frenada queda en el suelo, no desaparece
+    return [ra, rb, keep];
   }, [ka, kb]);
-  const want = { 'fire/water': ['stop', 'weak'], 'fire/air': ['ok', 'stop'], 'fire/earth': ['stop', 'ok'], 'water/air': ['ok', 'stop'], 'water/earth': ['stop', 'slow'], 'air/earth': ['stop', 'slow'], 'earth/earth': ['stop', 'stop'], 'fire/fire': ['stop', 'stop'], 'water/water': ['stop', 'stop'], 'air/air': ['stop', 'stop'] };
+  const want = { 'fire/water': ['stop', 'weak'], 'fire/air': ['stop', 'stop'], 'fire/earth': ['stop', 'ok'], 'water/air': ['stop', 'stop'], 'water/earth': ['stop', 'stop'], 'air/earth': ['stop', 'stop'], 'earth/earth': ['stop', 'stop'], 'fire/fire': ['stop', 'stop'], 'water/water': ['stop', 'stop'], 'air/air': ['stop', 'stop'] };
   const res = {};
-  for (const [k, w] of Object.entries(want)) { const [ka, kb] = k.split('/'); const r = await pairTest(ka, kb); res[k] = r.join(' / ');
+  for (const [k, w] of Object.entries(want)) { const [ka, kb] = k.split('/'); const r = await pairTest(ka, kb); res[k] = r.slice(0, 2).join(' / '); if (!r[2]) errs.push(`${k}: la piedra no quedó en el suelo`);
     if (r[0] !== w[0] || r[1] !== w[1]) errs.push(`${k}: se esperaba ${w.join(' / ')}, dio ${r.join(' / ')}`); }
+  // el viento aviva el fuego (llamarada) y salpica el agua al detenerlos
+  const windFx = async kb => p.evaluate(async kb => { G.orbs = []; G.fx = []; const y = TOP + ARENA_D * 0.3 * DEPTH, a = newOrb('air', 160, y), b = newOrb(kb, 360, y); G.orbs.push(a, b); launch(a, 500, 0, G.me); launch(b, -500, 0, G.foe);
+    await new Promise(r => setTimeout(r, 300)); return { flame: G.fx.filter(q => q.k === 'flame').length, drop: G.fx.filter(q => q.k === 'drop').length }; }, kb);
+  res.windFire = await windFx('fire'); res.windWater = await windFx('water');
+  if (!(res.windFire.flame > 6)) errs.push('el viento no avivó el fuego: ' + JSON.stringify(res.windFire));
+  if (!(res.windWater.drop > 10)) errs.push('el viento no salpicó el agua: ' + JSON.stringify(res.windWater));
+  // al golpear: fuego quema (brasas), agua empapa, piedra deja moretones, viento sacude la ropa
+  const status = async k => p.evaluate(async k => { G.orbs = []; const f = G.foe; f.burn = f.wet = f.gust = 0; f.bruises = []; f.shield = 0; const c = f.nodes[f.ix.upper], o = newOrb(k, c.x - 150, c.y); G.orbs.push(o); launch(o, 700, 0, G.me);
+    await new Promise(r => setTimeout(r, 400)); return { burn: +(f.burn || 0).toFixed(2), wet: +(f.wet || 0).toFixed(2), bruise: (f.bruises || []).length, gust: +(f.gust || 0).toFixed(2) }; }, k);
+  await p.evaluate(() => { G.foe.x = ARENA_W * 0.6; G.foe.y = ARENA_D * 0.5; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
+  res.status = { fire: await status('fire'), water: await status('water'), earth: await status('earth'), air: await status('air') };
+  if (!(res.status.fire.burn > 0.5)) errs.push('el fuego no lo quemó');
+  if (!(res.status.water.wet > 0.5)) errs.push('el agua no lo empapó');
+  if (!(res.status.earth.bruise > 0)) errs.push('la piedra no le dejó moretón');
+  if (!(res.status.air.gust > 0.3)) errs.push('el viento no le sacudió la ropa');
+  await p.evaluate(() => { G.foe.x = ARENA_W * 0.85; G.foe.y = ARENA_D * 0.85; G.foe.home = { x: G.foe.x, y: G.foe.y }; }); await p.waitForTimeout(400);
   // guardadas y en la mano también chocan
   const stayTest = (mine, mode, inc) => p.evaluate(async ([mine, mode, inc]) => {
     G.orbs = []; const c = G.me.nodes[G.me.ix.upper], o = newOrb(mine, c.x + 40, c.y); o.owner = G.me; G.orbs.push(o);
     if (mode === 'docked') { o.docked = true; o.lvl = 1; if (mine === 'water') o.side = 1; } else { o.held = true; o.x = c.x + 60; o.y = c.y - 80; const v = view(); PTRS.set(999, { x: v.ox + o.x * v.k, y: v.oy + o.y * v.k, x0: 0, y0: 0, t0: performance.now(), moved: true, prop: -1, orb: o }); } // en la mano: un dedo simulado la sostiene
     await new Promise(r => setTimeout(r, 300));
-    const tx = o.x, ty = o.y, i = newOrb(inc, tx + 140, ty); G.orbs.push(i); launch(i, -700, 0, G.foe);
+    const ch = G.me.nodes[G.me.ix.upper], rx = o.x - ch.x, ry = o.y - ch.y, rd = Math.hypot(rx, ry) || 1, ux = mode === 'docked' ? rx / rd : 1, uy = mode === 'docked' ? ry / rd : 0, i = newOrb(inc, o.x + ux * 140, o.y + uy * 140); G.orbs.push(i); launch(i, -ux * 700, -uy * 700, G.foe); // llega a la esfera desde afuera (si orbita, en línea con el pecho)
     await new Promise(r => setTimeout(r, 350));
     PTRS.delete(999); return { mine: o.life <= 0 || o.dead ? 'gone' : o.weak ? 'weak' : 'ok', inc: i.weak ? 'weak' : i.life <= 0 || i.dead || (!i.thrown && inc === 'earth') ? 'stop' : 'ok' }; // (la que se achica puede seguir y golpearte)
   }, [mine, mode, inc]);
-  const stays = [['fire', 'docked', 'air', 'ok', 'stop'], ['fire', 'docked', 'water', 'gone', 'weak'], ['earth', 'docked', 'fire', 'ok', 'stop'], ['water', 'held', 'fire', 'weak', 'stop']];
+  const stays = [['fire', 'docked', 'air', 'gone', 'stop'], ['fire', 'docked', 'water', 'gone', 'weak'], ['earth', 'docked', 'fire', 'ok', 'stop'], ['water', 'held', 'fire', 'weak', 'stop']];
   res.stay = {};
   for (const [mine, mode, inc, wm, wi] of stays) { const r = await stayTest(mine, mode, inc); res.stay[`${mine} ${mode} / ${inc}`] = r;
     if (r.mine !== wm || r.inc !== wi) errs.push(`${mine} ${mode} contra ${inc}: se esperaba ${wm} / ${wi}, dio ${r.mine} / ${r.inc}`); }

@@ -72,10 +72,10 @@ const { chromium, devices } = require('playwright');
   const armAngle = () => p.evaluate(() => { const m = G.me, a = m.ix.arms.find(x => x.ctl); if (!a) return null; const c = a.ctl, beta = Math.atan2(c.x - m.x, (c.y - TOP) / DEPTH - m.y), al = Math.sign(a.lat) * wrapA(beta - m.ph);
     const N = m.nodes, sh = N[a.sh], el = N[a.el], ha = N[a.ha], dx = ha.x - sh.x, dy = ha.y - sh.y, L = Math.hypot(dx, dy) || 1, off = Math.abs((el.x - sh.x) * dy - (el.y - sh.y) * dx) / L; return { al: +(al * 180 / Math.PI).toFixed(0), elbow: +off.toFixed(1) }; });
   const behind = await scr(10, 90); // detrás y un poco al lado
-  await touch('touchStart', [{ x: behind.x, y: behind.y, id: 7 }]); await p.waitForTimeout(1200);
+  await touch('touchStart', [{ x: behind.x - 30, y: behind.y - 30, id: 7 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await touch('touchMove', [{ x: behind.x - 30 + i * 10, y: behind.y - 30 + i * 10, id: 7 }]); await p.waitForTimeout(40); } await p.waitForTimeout(1200); // arrastrar: la mano sigue al dedo (apretar sin arrastrar es puñetazo)
   const one = await armAngle(); await touch('touchEnd', []); await p.waitForTimeout(1200);
   const l = await scr(40, 110), r = await scr(140, 60), ph0 = await p.evaluate(() => G.me.ph);
-  await touch('touchStart', [{ x: l.x, y: l.y, id: 8 }, { x: r.x, y: r.y, id: 9 }]); await p.waitForTimeout(1200);
+  await touch('touchStart', [{ x: l.x - 30, y: l.y, id: 8 }, { x: r.x - 30, y: r.y, id: 9 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await touch('touchMove', [{ x: l.x - 30 + i * 10, y: l.y, id: 8 }, { x: r.x - 30 + i * 10, y: r.y, id: 9 }]); await p.waitForTimeout(40); } await p.waitForTimeout(1200);
   const turn2 = await p.evaluate(ph0 => Math.abs(wrapA(G.me.ph - ph0)) * 180 / Math.PI, ph0); await touch('touchEnd', []); await p.waitForTimeout(600);
   console.log({ one, turn2: turn2.toFixed(0) });
   if (!one || one.al < -20 || one.al > 70) errs.push('el cuerpo no giró con el brazo (quedó hacia atrás): ' + JSON.stringify(one));
