@@ -35,12 +35,12 @@ const { chromium, devices } = require('playwright');
   // A lanza una llamarada a B: B la ve y le hace daño
   const hpB0 = await B.evaluate(() => G.me.hp);
   await A.evaluate(() => { startBeam(null, G.me, performance.now() + 900, G.me.ix.arms[0], 'fire'); }); await A.waitForTimeout(400);
-  const beamSeen = await B.evaluate(() => G.beams.some(b => b.net && b.k === 'fire')); await A.waitForTimeout(1300);
+  const beamSeen = await B.evaluate(() => G.beams.some(b => b.net && b.k === 'fire')), fromHand = await B.evaluate(() => { const b = G.beams.find(b => b.net && b.on), f = G.foe; if (!b) return 999; return Math.min(...f.ix.arms.map(a => Math.hypot(f.nodes[a.ha].x - b.ox, f.nodes[a.ha].y - b.oy))); }); await A.waitForTimeout(1300);
   const beamDmg = hpB0 - await B.evaluate(() => G.me.hp);
   // A sale: B vuelve a la pantalla de elegir
   await A.click('#btnBack'); await B.waitForTimeout(2500);
   const left = await B.evaluate(() => ({ scene, net: NET.on }));
-  const res = { code, saved, els, roomGone, seen: { x: seen.x.toFixed(2), y: seen.y.toFixed(2) }, hit, bubble, beamSeen, beamDmg: beamDmg.toFixed(1), left };
+  const res = { code, saved, els, roomGone, seen: { x: seen.x.toFixed(2), y: seen.y.toFixed(2) }, hit, bubble, beamSeen, fromHand: fromHand.toFixed(1), beamDmg: beamDmg.toFixed(1), left };
   console.log(res);
   if (!saved) errs.push('no se guardó la sala en Firebase');
   if (!(els.A[0] === 'fuego' && els.A[1] === 'agua' && els.B[0] === 'agua' && els.B[1] === 'fuego')) errs.push('los elementos no llegaron: ' + JSON.stringify(els));
@@ -49,6 +49,7 @@ const { chromium, devices } = require('playwright');
   if (!(hit.B < 100 && Math.abs(hit.Asees - hit.B) < 1)) errs.push('la bola de fuego no dañó a B o A no vio su vida: ' + JSON.stringify(hit));
   if (!(bubble.length === 1 && bubble[0] === 2)) errs.push('A no ve la burbuja de B: ' + JSON.stringify(bubble));
   if (!beamSeen || !(beamDmg > 2)) errs.push('B no vio o no recibió la llamarada de A');
+  if (!(fromHand < 12)) errs.push('la llamarada de A no sale de su mano en la pantalla de B: ' + fromHand.toFixed(1));
   if (!(left.scene === 'pick' && !left.net)) errs.push('B no volvió al salir A: ' + JSON.stringify(left));
   console.log(errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'); await b.close();
 })();

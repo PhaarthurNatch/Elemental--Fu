@@ -1,5 +1,5 @@
 // Prueba de la llamarada (fuego), la ráfaga (aire) y el chorro (agua): deslizar rápido hacia el rival y mantener el dedo.
-// Pierden intensidad y alcance; el agua necesita su burbuja guardada y la gasta (más grande, dura más).
+// Sólo con «esferas» guardadas y las van gastando (pedido del dueño): fuego quema sus bolas una tras otra, aire su anillo, agua su burbuja (más grande, dura más).
 // Uso: node tools/beam.js
 const { chromium, devices } = require('playwright');
 (async () => {
@@ -7,35 +7,37 @@ const { chromium, devices } = require('playwright');
   const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
   await p.goto('file://' + require('path').resolve(__dirname, '..', 'index.html')); await p.waitForTimeout(300);
   const c = await p.context().newCDPSession(p), t = (type, pts) => c.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
-  const start = async el => {
-    await p.evaluate(el => { if (G) document.getElementById('btnBack').click(); document.querySelector(`.elbtn[data-el="${el}"]`).click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.25; G.foe.home = { x: G.foe.x, y: G.foe.y }; }, el);
+  const start = async (el, spheres = true) => {
+    await p.evaluate(([el, spheres]) => { if (G) document.getElementById('btnBack').click(); document.querySelector(`.elbtn[data-el="${el}"]`).click(); document.getElementById('calib').hidden = true; G.phase = 'fight'; G.foe.wait = 99; G.foeTest = false; G.foe.el = 'tierra'; G.orbs = G.orbs.filter(o => o.owner !== G.foe); G.me.x = ARENA_W * 0.5; G.me.y = ARENA_D * 0.5; G.foe.x = ARENA_W * 0.5; G.foe.y = ARENA_D * 0.25; G.foe.home = { x: G.foe.x, y: G.foe.y };
+      if (spheres && el === 'fuego') for (let i = 0; i < 3; i++) { const c = G.me.nodes[G.me.ix.upper], o = newOrb('fire', c.x, c.y); o.docked = true; o.owner = G.me; o.lvl = 1; G.orbs.push(o); }
+      if (spheres && el === 'aire') { const c = G.me.nodes[G.me.ix.upper], o = newOrb('air', c.x, c.y); o.docked = true; o.owner = G.me; o.lvl = o.lvlS = 3; G.orbs.push(o); } }, [el, spheres]);
     await p.waitForTimeout(600);
   };
   const swipe = async (dir) => { // deslizar rápido hacia el rival (desde donde sale el ataque: la mano o la burbuja) o en la dirección dada
-    const u = dir || await p.evaluate(() => { const o = G.orbs.find(o => o.docked && o.owner === G.me) || G.me.nodes[G.me.ix.upper], f = G.foe.nodes[G.foe.ix.upper], dx = f.x - o.x, dy = f.y + 4 * G.foe.s - o.y, d = Math.hypot(dx, dy); return { x: dx / d, y: dy / d }; });
+    const u = dir || await p.evaluate(() => { const o = G.orbs.find(o => o.docked && o.owner === G.me && o.k === 'water') || G.me.nodes[G.me.ix.upper], f = G.foe.nodes[G.foe.ix.upper], dx = f.x - o.x, dy = f.y + 4 * G.foe.s - o.y, d = Math.hypot(dx, dy); return { x: dx / d, y: dy / d }; });
     await t('touchStart', [{ x: 200, y: 640 }]); await p.waitForTimeout(40); for (let i = 1; i <= 3; i++) { await t('touchMove', [{ x: 200 + u.x * i * 60, y: 640 + u.y * i * 60 }]); await p.waitForTimeout(8); } };
   const reach = () => p.evaluate(() => { const bm = G.beams.find(x => x.on); if (!bm) return 0; return Math.max(0, ...bm.parts.map(q => Math.hypot(q.vx, q.vy))) * BEAM.life; }); // alcance = rapidez de las llamas nuevas × su vida
   const res = {};
 
-  // fuego: llamarada que se mantiene, daña y pierde alcance
+  // fuego: sin bolas de fuego guardadas no hay llamarada
+  await start('fuego', false); await swipe(); await p.waitForTimeout(450); res.fireNone = await p.evaluate(() => G.beams.length); await t('touchEnd', []); await p.waitForTimeout(300);
+  if (res.fireNone !== 0) errs.push('fuego: salió la llamarada sin bolas guardadas');
+  // fuego con 3 bolas: la llamarada se mantiene, daña y va quemando las bolas una tras otra
   await start('fuego');
   let hp0 = await p.evaluate(() => G.foe.hp);
   await swipe(); await p.waitForTimeout(450);
-  res.fireOn = await p.evaluate(() => G.beams.filter(x => x.on).length); const r1 = await reach();
-  await p.waitForTimeout(1300); const r2 = await reach(); res.breath = await p.evaluate(() => G.me.breath.toFixed(2));
+  res.fireOn = await p.evaluate(() => G.beams.filter(x => x.on).length);
+  await p.waitForTimeout(1400); res.balls = await p.evaluate(() => G.orbs.filter(o => o.docked && o.k === 'fire' && !o.dead).length);
   await t('touchEnd', []); await p.waitForTimeout(500);
-  res.fireOff = await p.evaluate(() => G.beams.filter(x => x.on).length); res.fireDmg = (hp0 - await p.evaluate(() => G.foe.hp)).toFixed(1); res.reach = [r1.toFixed(0), r2.toFixed(0)];
+  res.fireOff = await p.evaluate(() => G.beams.filter(x => x.on).length); res.fireDmg = (hp0 - await p.evaluate(() => G.foe.hp)).toFixed(1);
   if (res.fireOn !== 1) errs.push('fuego: no salió la llamarada');
-  if (!(r2 < r1 * 0.8)) errs.push('fuego: el alcance no disminuyó');
+  if (!(res.balls < 3)) errs.push('fuego: la llamarada no gastó sus bolas');
   if (res.fireOff !== 0) errs.push('fuego: no se cortó al soltar');
   if (!(res.fireDmg > 3)) errs.push('fuego: no dañó');
-  await p.waitForTimeout(1500); res.regen = await p.evaluate(() => G.me.breath.toFixed(2));
-  if (!(+res.regen > +res.breath)) errs.push('fuego: el aliento no se recupera');
-  // fuego: deslizar y soltar sin bolas guardadas = llamarada corta
-  await p.evaluate(() => { G.me.breath = 1; }); await swipe(); await t('touchEnd', []); await p.waitForTimeout(100);
-  res.burst = await p.evaluate(() => G.beams.filter(x => x.on).length); await p.waitForTimeout(700);
-  res.burstEnd = await p.evaluate(() => G.beams.filter(x => x.on).length);
-  if (res.burst !== 1 || res.burstEnd !== 0) errs.push('fuego: la llamarada corta no funcionó');
+  // con una sola bola, la llamarada se acaba sola cuando la quema
+  await start('fuego', false); await p.evaluate(() => { const c = G.me.nodes[G.me.ix.upper], o = newOrb('fire', c.x, c.y); o.docked = true; o.owner = G.me; G.orbs.push(o); });
+  await swipe(); const tf = Date.now(); await p.waitForFunction(() => G.beams.length && !G.beams.some(x => x.on), null, { timeout: 5000 }).catch(() => errs.push('fuego: la llamarada no se acabó al quemar la bola'));
+  res.oneBall = ((Date.now() - tf) / 1000).toFixed(1); await t('touchEnd', []); await p.waitForTimeout(400);
 
   // aire: ráfaga que daña y empuja
   await start('aire');
@@ -44,6 +46,7 @@ const { chromium, devices } = require('playwright');
   res.airDmg = (hp0 - await p.evaluate(() => G.foe.hp)).toFixed(1); res.airPush = (fy0 - await p.evaluate(() => G.foe.y)).toFixed(0);
   if (!(res.airDmg > 1)) errs.push('aire: la ráfaga no dañó');
   if (!(res.airPush > 10)) errs.push('aire: la ráfaga no empujó');
+  res.ringLeft = await p.evaluate(() => (G.orbs.find(o => o.docked && o.k === 'air') || { lvl: 0 }).lvl.toFixed(2)); if (!(res.ringLeft < 3)) errs.push('aire: la ráfaga no gastó el anillo');
 
   // agua: sin burbuja no hay chorro; con burbuja la gasta, y más grande dura más
   await start('agua');
